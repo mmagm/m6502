@@ -1,0 +1,6 @@
+core_bmc/
+core_cover/
+*.gtkw
+*.vcd
+core.il
+__pycache__
