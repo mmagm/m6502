@@ -28,6 +28,7 @@ from nmigen.cli import main_parser, main_runner
 from nmigen.back.pysim import Simulator #, Delay
 
 from formal.verification import FormalData, Verification
+from alu8 import ALU8Func, ALU8
 
 class Reg8(IntEnum):
     """Values for specifying an 8-bit register for things
@@ -82,6 +83,18 @@ class Core(Elaboratable):
 
         self.instr = Signal(8, reset_less=True)
 
+        # busses
+        self.src8_1 = Signal(8)  # Input 1 of the ALU
+        self.src8_2 = Signal(8)  # Input 2 of the ALU
+        self.alu8 = Signal(8)   # Output from the ALU
+
+        # selectors for busses
+        self.src8_1_select = Signal(Reg8)
+        self.src8_2_select = Signal(Reg8)
+
+        # function control
+        self.alu8_func = Signal(ALU8Func)
+
         self.sr_flags = Signal(8)
 
         self.reg8_map = {
@@ -118,10 +131,23 @@ class Core(Elaboratable):
     def elaborate(self, _: Platform) -> Module:
         m = Module()
 
+        m.submodules.alu = alu = ALU8()
+
         m.d.comb += self.end_instr_flag.eq(0)
+        m.d.comb += self.src8_1_select.eq(Reg8.NONE)
+        m.d.comb += self.src8_2_select.eq(Reg8.NONE)
+        m.d.comb += self.alu8_func.eq(ALU8Func.NONE)
+
+        self.src_bus_setup(m, self.reg8_map, self.src8_1, self.src8_1_select)
+        self.src_bus_setup(m, self.reg8_map, self.src8_2, self.src8_2_select)
+
+        m.d.comb += alu.input1.eq(self.src8_1)
+        m.d.comb += alu.input2.eq(self.src8_2)
+        m.d.comb += self.alu8.eq(alu.output)
+        m.d.comb += alu.func.eq(self.alu8_func)
+        m.d.comb += self.sr_flags.eq(alu.sr_flags)
 
         self.reset_handler(m)
-
         with m.If(self.reset_state == 3):
             with m.If(self.cycle == 0):
                 self.fetch(m)
@@ -131,6 +157,20 @@ class Core(Elaboratable):
         self.end_instr_flag_handler(m)
 
         return m
+
+    def src_bus_setup(self, m: Module, reg_map: Dict[IntEnum, Tuple[Signal, bool]], bus: Signal, selector: Signal):
+        with m.Switch(selector):
+            for e, reg in reg_map.items():
+                with m.Case(e):
+                    m.d.comb += bus.eq(reg[0])
+            with m.Default():
+                m.d.comb += bus.eq(0)
+
+    def dest_bus_setup(self, m: Module, reg_map: Dict[IntEnum, Tuple[Signal, bool]], bus: Signal, bitmap: Signal):
+        for e, reg in reg_map.items():
+            if reg[1]:
+                with m.If(bitmap[e.value]):
+                    m.d.ph1 += reg[0].eq(bus)
 
     def fetch(self, m: Module):
         m.d.ph1 += self.instr.eq(self.Din)
@@ -144,18 +184,67 @@ class Core(Elaboratable):
             with m.Case(0xEA):
                 self.NOP(m)
             with m.Case(0x4C):
-                self.JMPAbs(m)
+                self.JMPabs(m)
+            with m.Case(0xAD):
+                self.LDAabs(m)
+            with m.Case(0x6D):
+                self.ADCabs(m)
+            with m.Case(0xED):
+                self.SBCabs(m)
             with m.Default():  # Illegal
                 self.end_instr(m, self.pc)
 
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
 
-    def JMPAbs(self, m: Module):
+    def JMPabs(self, m: Module):
         operand = self.mode_abs(m)
 
         with m.If(self.cycle == 2):
             self.end_instr(m, operand)
+
+    def LDAabs(self, m: Module):
+        operand = self.mode_abs(m)
+        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_1)
+
+        with m.If(self.cycle == 3):
+            m.d.comb += self.alu8_func.eq(ALU8Func.LD)
+            m.d.ph1 += self.a.eq(self.alu8)
+            self.end_instr(m, self.pc)
+
+    def ADCabs(self, m: Module):
+        operand = self.mode_abs(m)
+        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
+
+        with m.If(self.cycle == 3):
+            m.d.comb += self.src8_1.eq(self.a)
+            m.d.comb += self.alu8_func.eq(ALU8Func.ADC)
+            m.d.ph1 += self.a.eq(self.alu8)
+            self.end_instr(m, self.pc)
+
+    def SBCabs(self, m: Module):
+        operand = self.mode_abs(m)
+        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
+
+        with m.If(self.cycle == 3):
+            m.d.comb += self.src8_1.eq(self.a)
+            m.d.comb += self.alu8_func.eq(ALU8Func.SBC)
+            m.d.ph1 += self.a.eq(self.alu8)
+            self.end_instr(m, self.pc)
+
+    def read_byte(self, m: Module, cycle: int, addr: Statement, comb_dest: Signal):
+        """Reads a byte starting from the given cycle.
+
+        The byte read is combinatorically placed in comb_dest.
+        """
+        with m.If(self.cycle == cycle):
+            m.d.ph1 += self.Addr.eq(addr)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == cycle + 1):
+            m.d.comb += comb_dest.eq(self.Din)
+            if self.verification is not None:
+                self.formal_data.read(m, self.Addr, self.Din)
 
     def mode_abs(self, m: Module):
         operand = Cat(self.Din, self.tmp16[8:])

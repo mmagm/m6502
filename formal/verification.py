@@ -61,7 +61,8 @@ class Verification(object):
             Z = prev[_Z]
         if C is None:
             C = prev[_C]
-        return Cat(N, V, 1, B, D, I, Z, C)
+
+        return Cat(C, Z, I, D, B, 1, V, N)
 
     def assertFlags(self,
                     m: Module,
