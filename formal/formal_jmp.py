@@ -28,6 +28,7 @@ class Formal(Verification):
 
     def check(self, m: Module, instr: Value, data: FormalData):
         m.d.comb += [
+            Assert(data.post_sr_flags == data.pre_sr_flags),
             Assert(data.post_a == data.pre_a),
             Assert(data.post_x == data.pre_x),
             Assert(data.post_y == data.pre_y),

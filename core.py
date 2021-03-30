@@ -41,8 +41,10 @@ class Reg8(IntEnum):
     PCL = 5
     SP = 6
     TMP8 = 7
-    DIN = 8
-    DOUT = 9
+    TMP16H = 8
+    TMP16L = 9
+    DIN = 10
+    DOUT = 11
 
 
 class Reg16(IntEnum):
@@ -50,7 +52,8 @@ class Reg16(IntEnum):
     like sources and destinations."""
     NONE = 0
     PC = 1
-    ADDR = 2
+    TMP16 = 2
+    ADDR = 3
 
 
 class Core(Elaboratable):
@@ -79,6 +82,8 @@ class Core(Elaboratable):
 
         self.instr = Signal(8, reset_less=True)
 
+        self.sr_flags = Signal(8)
+
         self.reg8_map = {
             Reg8.A: (self.a, True),
             Reg8.X: (self.x, True),
@@ -86,11 +91,14 @@ class Core(Elaboratable):
             Reg8.SP: (self.sp, True),
             Reg8.PCH: (self.pc[8:], True),
             Reg8.PCL: (self.pc[:8], True),
+            Reg8.TMP16H: (self.tmp16[8:], True),
+            Reg8.TMP16L: (self.tmp16[:8], True),
             Reg8.DIN: (self.Din, False),  # read-only register
             Reg8.DOUT: (self.Dout, True),
         }
         self.reg16_map = {
             Reg16.PC: (self.pc, True),
+            Reg16.TMP16: (self.tmp16, True),
             Reg16.ADDR: (self.Addr, True),
         }
 
@@ -113,7 +121,6 @@ class Core(Elaboratable):
         m.d.comb += self.end_instr_flag.eq(0)
 
         self.reset_handler(m)
-        self.end_instr_flag_handler(m)
 
         with m.If(self.reset_state == 3):
             with m.If(self.cycle == 0):
@@ -121,6 +128,7 @@ class Core(Elaboratable):
             with m.Else():
                 self.execute(m)
         self.maybe_do_formal_verification(m)
+        self.end_instr_flag_handler(m)
 
         return m
 
@@ -144,6 +152,14 @@ class Core(Elaboratable):
         self.end_instr(m, self.pc)
 
     def JMPAbs(self, m: Module):
+        operand = self.mode_abs(m)
+
+        with m.If(self.cycle == 2):
+            self.end_instr(m, operand)
+
+    def mode_abs(self, m: Module):
+        operand = Cat(self.Din, self.tmp16[8:])
+
         with m.If(self.cycle == 1):
             m.d.ph1 += self.tmp16[8:].eq(self.Din)
             m.d.ph1 += self.pc.eq(self.pc + 1)
@@ -154,10 +170,13 @@ class Core(Elaboratable):
                 self.formal_data.read(m, self.Addr, self.Din)
 
         with m.If(self.cycle == 2):
-            new_pc = Cat(self.Din, self.tmp16[8:])
-            self.end_instr(m, new_pc)
+            m.d.ph1 += self.tmp16[:8].eq(self.Din)
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+            m.d.ph1 += self.cycle.eq(3)
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
+
+        return operand
 
     def end_instr(self, m: Module, addr: Statement):
         m.d.comb += self.end_instr_addr.eq(addr)
@@ -191,13 +210,13 @@ class Core(Elaboratable):
             with m.If((self.cycle == 0) & (self.reset_state == 3)):
                 with m.If(self.verification.valid(self.Din)):
                     self.formal_data.preSnapshot(
-                        m, self.Din, self.a, self.x, self.y, self.sp, self.pc)
+                        m, self.Din, self.sr_flags, self.a, self.x, self.y, self.sp, self.pc)
                 with m.Else():
                     self.formal_data.noSnapshot(m)
 
                 with m.If(self.formal_data.snapshot_taken):
                     self.formal_data.postSnapshot(
-                        m, self.a, self.x, self.y, self.sp, self.pc)
+                        m, self.sr_flags, self.a, self.x, self.y, self.sp, self.pc)
                     self.verification.check(m, self.instr, self.formal_data)
 
 if __name__ == "__main__":
@@ -228,8 +247,8 @@ if __name__ == "__main__":
         # m.d.comb += Assume(rst == (cycle2 < 8))
 
         with m.If(cycle2 == 20):
-            m.d.ph1 += Cover(verification.valid(core.instr))
-            m.d.ph1 += Assume(verification.valid(core.instr))
+            m.d.ph1 += Cover(core.formal_data.snapshot_taken)
+            m.d.ph1 += Assume(core.formal_data.snapshot_taken)
 
         # Verify reset does what it's supposed to
         with m.If(Past(rst, 4) & ~Past(rst, 3) & ~Past(rst, 2) & ~Past(rst)):

@@ -20,6 +20,13 @@ from nmigen import Signal, Value, Module, Cat, Array
 from nmigen.asserts import Assert
 from nmigen.hdl.ast import Statement
 
+_N = 7
+_V = 6
+_B = 4
+_D = 3
+_I = 2
+_Z = 1
+_C = 0
 
 class Verification(object):
     def __init__(self):
@@ -30,6 +37,55 @@ class Verification(object):
 
     def check(self, m: Module, instr: Value, data: 'FormalData'):
         pass
+
+    def flags(self,
+              prev: Value,
+              N: Value = None,
+              V: Value = None,
+              B: Value = None,
+              D: Value = None,
+              I: Value = None,
+              Z: Value = None,
+              C: Value = None) -> Value:
+        if N is None:
+            N = prev[_N]
+        if V is None:
+            V = prev[_V]
+        if B is None:
+            B = prev[_B]
+        if D is None:
+            D = prev[_D]
+        if I is None:
+            I = prev[_I]
+        if Z is None:
+            Z = prev[_Z]
+        if C is None:
+            C = prev[_C]
+        return Cat(N, V, 1, B, D, I, Z, C)
+
+    def assertFlags(self,
+                    m: Module,
+                    post_flags: Value,
+                    pre_flags: Value,
+                    N: Value = None,
+                    V: Value = None,
+                    B: Value = None,
+                    D: Value = None,
+                    I: Value = None,
+                    Z: Value = None,
+                    C: Value = None):
+        expectedFlags = Signal(8)
+        m.d.comb += expectedFlags.eq(self.flags(pre_flags, N, V, B, D, I, Z, C))
+        m.d.comb += [
+            Assert(post_flags[_N] == expectedFlags[_N]),
+            Assert(post_flags[_V] == expectedFlags[_V]),
+            Assert(post_flags[5] == expectedFlags[5]),
+            Assert(post_flags[_B] == expectedFlags[_B]),
+            Assert(post_flags[_D] == expectedFlags[_D]),
+            Assert(post_flags[_I] == expectedFlags[_I]),
+            Assert(post_flags[_Z] == expectedFlags[_Z]),
+            Assert(post_flags[_C] == expectedFlags[_C]),
+        ]
 
 
 class FormalData(object):
@@ -42,12 +98,14 @@ class FormalData(object):
 
         self.instr = Signal(8)
 
+        self.pre_sr_flags = Signal(8)
         self.pre_a = Signal(8)
         self.pre_x = Signal(8)
         self.pre_y = Signal(8)
         self.pre_sp = Signal(8)
         self.pre_pc = Signal(16)
 
+        self.post_sr_flags = Signal(8)
         self.post_a = Signal(8)
         self.post_x = Signal(8)
         self.post_y = Signal(8)
@@ -86,13 +144,14 @@ class FormalData(object):
                 m.d.ph1 += self.write_addr[self.addresses_written].eq(addr)
                 m.d.ph1 += self.write_data[self.addresses_written].eq(data)
 
-    def preSnapshot(self, m: Module, instr: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value):
+    def preSnapshot(self, m: Module, instr: Value, sr_flags: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value):
         if self.verification is None:
             return
         m.d.ph1 += self.snapshot_taken.eq(1)
         m.d.ph1 += self.addresses_read.eq(0)
         m.d.ph1 += self.addresses_written.eq(0)
         m.d.ph1 += self.instr.eq(instr)
+        m.d.ph1 += self.pre_sr_flags.eq(sr_flags)
         m.d.ph1 += self.pre_a.eq(a)
         m.d.ph1 += self.pre_x.eq(x)
         m.d.ph1 += self.pre_y.eq(y)
@@ -104,9 +163,10 @@ class FormalData(object):
             return
         m.d.ph1 += self.snapshot_taken.eq(0)
 
-    def postSnapshot(self, m: Module, a: Value, x: Value, y: Value, sp: Value, pc: Value):
+    def postSnapshot(self, m: Module, sr_flags: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value):
         if self.verification is None:
             return
+        m.d.comb += self.post_sr_flags.eq(sr_flags)
         m.d.comb += self.post_a.eq(a)
         m.d.comb += self.post_x.eq(x)
         m.d.comb += self.post_y.eq(y)
