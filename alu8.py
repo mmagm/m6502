@@ -39,6 +39,9 @@ class ALU8Func(IntEnum):
     LD = 1
     ADC = 2
     SBC = 3
+    ORA = 4
+    AND = 5
+    EOR = 6
 
 class ALU8(Elaboratable):
     def __init__(self):
@@ -103,6 +106,22 @@ class ALU8(Elaboratable):
                 m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
                 m.d.comb += self._sr_flags[_V].eq(overflow)
                 m.d.comb += self._sr_flags[_C].eq(~carry8)
+
+            with m.Case(ALU8Func.ORA):
+                m.d.comb += self.output.eq(self.input1 | self.input2)
+                m.d.comb += self._sr_flags[_N].eq(self.output[7])
+                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+
+            with m.Case(ALU8Func.AND):
+                m.d.comb += self.output.eq(self.input1 & self.input2)
+                m.d.comb += self._sr_flags[_N].eq(self.output[7])
+                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+
+            with m.Case(ALU8Func.EOR):
+                m.d.comb += self.output.eq(self.input1 ^ self.input2)
+                m.d.comb += self._sr_flags[_N].eq(self.output[7])
+                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+
         return m
 
 
