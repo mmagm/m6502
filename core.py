@@ -186,17 +186,21 @@ class Core(Elaboratable):
             with m.Case(0x4C):
                 self.JMPabs(m)
             with m.Case(0xAD):
-                self.LDAabs(m)
+                self.ALUabs(m, ALU8Func.LD)
             with m.Case(0x6D):
-                self.ADCabs(m)
+                self.ALUabs(m, ALU8Func.ADC)
             with m.Case(0xED):
-                self.SBCabs(m)
+                self.ALUabs(m, ALU8Func.SBC)
             with m.Case(0x0D):
-                self.ORAabs(m)
+                self.ALUabs(m, ALU8Func.ORA)
             with m.Case(0x2D):
-                self.ANDabs(m)
+                self.ALUabs(m, ALU8Func.AND)
             with m.Case(0x4D):
-                self.EORabs(m)
+                self.ALUabs(m, ALU8Func.EOR)
+            with m.Case(0x2C): # BIT
+                self.ALUabs(m, ALU8Func.AND, store=False)
+            with m.Case(0xCD): # CMP
+                self.ALUabs(m, ALU8Func.SUB, store=False)
             with m.Default():  # Illegal
                 self.end_instr(m, self.pc)
 
@@ -209,63 +213,18 @@ class Core(Elaboratable):
         with m.If(self.cycle == 2):
             self.end_instr(m, operand)
 
-    def LDAabs(self, m: Module):
+    def ALUabs(self, m: Module, func: ALU8Func, store: bool = True):
         operand = self.mode_abs(m)
-        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_1)
 
-        with m.If(self.cycle == 3):
-            m.d.comb += self.alu8_func.eq(ALU8Func.LD)
-            m.d.ph1 += self.a.eq(self.alu8)
-            self.end_instr(m, self.pc)
-
-    def ADCabs(self, m: Module):
-        operand = self.mode_abs(m)
         self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
 
         with m.If(self.cycle == 3):
             m.d.comb += self.src8_1.eq(self.a)
-            m.d.comb += self.alu8_func.eq(ALU8Func.ADC)
-            m.d.ph1 += self.a.eq(self.alu8)
-            self.end_instr(m, self.pc)
+            m.d.comb += self.alu8_func.eq(func)
 
-    def SBCabs(self, m: Module):
-        operand = self.mode_abs(m)
-        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
+            if store:
+                m.d.ph1 += self.a.eq(self.alu8)
 
-        with m.If(self.cycle == 3):
-            m.d.comb += self.src8_1.eq(self.a)
-            m.d.comb += self.alu8_func.eq(ALU8Func.SBC)
-            m.d.ph1 += self.a.eq(self.alu8)
-            self.end_instr(m, self.pc)
-
-    def ORAabs(self, m: Module):
-        operand = self.mode_abs(m)
-        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
-
-        with m.If(self.cycle == 3):
-            m.d.comb += self.src8_1.eq(self.a)
-            m.d.comb += self.alu8_func.eq(ALU8Func.ORA)
-            m.d.ph1 += self.a.eq(self.alu8)
-            self.end_instr(m, self.pc)
-
-    def ANDabs(self, m: Module):
-        operand = self.mode_abs(m)
-        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
-
-        with m.If(self.cycle == 3):
-            m.d.comb += self.src8_1.eq(self.a)
-            m.d.comb += self.alu8_func.eq(ALU8Func.AND)
-            m.d.ph1 += self.a.eq(self.alu8)
-            self.end_instr(m, self.pc)
-
-    def EORabs(self, m: Module):
-        operand = self.mode_abs(m)
-        self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
-
-        with m.If(self.cycle == 3):
-            m.d.comb += self.src8_1.eq(self.a)
-            m.d.comb += self.alu8_func.eq(ALU8Func.EOR)
-            m.d.ph1 += self.a.eq(self.alu8)
             self.end_instr(m, self.pc)
 
     def read_byte(self, m: Module, cycle: int, addr: Statement, comb_dest: Signal):
