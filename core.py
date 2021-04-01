@@ -70,6 +70,7 @@ class Core(Elaboratable):
         self.Din = Signal(8)
         self.Dout = Signal(8)
         self.RW = Signal(reset=1)  # 1 = read, 0 = write
+        self.VMA = Signal()  # 1 = address is valid
 
         self.a = Signal(8)
         self.x = Signal(8)
@@ -137,6 +138,7 @@ class Core(Elaboratable):
         m.d.comb += self.src8_1_select.eq(Reg8.NONE)
         m.d.comb += self.src8_2_select.eq(Reg8.NONE)
         m.d.comb += self.alu8_func.eq(ALU8Func.NONE)
+        m.d.ph1 += self.VMA.eq(1)
 
         self.src_bus_setup(m, self.reg8_map, self.src8_1, self.src8_1_select)
         self.src_bus_setup(m, self.reg8_map, self.src8_2, self.src8_2_select)
@@ -185,6 +187,8 @@ class Core(Elaboratable):
                 self.NOP(m)
             with m.Case(0x4C):
                 self.JMPabs(m)
+            with m.Case(0x8D):
+                self.STAabs(m)
             with m.Case(0xAD):
                 self.ALUabs(m, ALU8Func.LD)
             with m.Case(0x6D):
@@ -206,6 +210,25 @@ class Core(Elaboratable):
 
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
+
+    def STAabs(self, m: Module):
+        operand = self.mode_abs(m)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.VMA.eq(0)
+            m.d.ph1 += self.Addr.eq(operand)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 3):
+            m.d.ph1 += self.Addr.eq(operand)
+            m.d.ph1 += self.Dout.eq(self.a)
+            m.d.ph1 += self.RW.eq(0)
+            m.d.ph1 += self.cycle.eq(4)
+
+        with m.If(self.cycle == 4):
+            if self.verification is not None:
+                self.formal_data.write(m, self.Addr, self.Dout)
+            self.end_instr(m, self.pc)
 
     def JMPabs(self, m: Module):
         operand = self.mode_abs(m)
@@ -242,7 +265,12 @@ class Core(Elaboratable):
                 self.formal_data.read(m, self.Addr, self.Din)
 
     def mode_abs(self, m: Module):
-        operand = Cat(self.Din, self.tmp16[8:])
+        """Generates logic to get the 16-bit operand for extended mode instructions.
+
+        Returns a Statement containing the 16-bit operand. After cycle 2, tmp16
+        contains the operand.
+        """
+        operand = Mux(self.cycle == 2, Cat(self.Din, self.tmp16[8:]), self.tmp16)
 
         with m.If(self.cycle == 1):
             m.d.ph1 += self.tmp16[8:].eq(self.Din)
@@ -331,8 +359,10 @@ if __name__ == "__main__":
         # m.d.comb += Assume(rst == (cycle2 < 8))
 
         with m.If(cycle2 == 20):
-            m.d.ph1 += Cover(core.formal_data.snapshot_taken)
-            m.d.ph1 += Assume(core.formal_data.snapshot_taken)
+            m.d.ph1 += Cover(core.formal_data.snapshot_taken &
+                             core.end_instr_flag)
+            m.d.ph1 += Assume(core.formal_data.snapshot_taken &
+                              core.end_instr_flag)
 
         # Verify reset does what it's supposed to
         with m.If(Past(rst, 4) & ~Past(rst, 3) & ~Past(rst, 2) & ~Past(rst)):
