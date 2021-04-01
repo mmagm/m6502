@@ -72,10 +72,9 @@ class ALU8(Elaboratable):
 
         with m.Switch(self.func):
             with m.Case(ALU8Func.LD):
-                m.d.comb += self.output.eq(self.input1)
-                m.d.comb += self._sr_flags[_Z].eq(self.input1 == 0)
-                m.d.comb += self._sr_flags[_N].eq(self.input1[7])
-                m.d.comb += self._sr_flags[_V].eq(0)
+                m.d.comb += self.output.eq(self.input2)
+                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[_N].eq(self.output[7])
 
             with m.Case(ALU8Func.ADC):
                 carry_in = self.sr_flags[_C]

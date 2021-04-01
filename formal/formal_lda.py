@@ -43,4 +43,4 @@ class Formal(Verification):
             Assert(data.post_a == data.read_data[2]),
         ]
         self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags,
-                         Z=(data.post_a == 0), N=data.post_a[7], V=0)
+                         Z=(data.post_a == 0), N=data.post_a[7])
