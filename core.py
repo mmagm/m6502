@@ -139,6 +139,7 @@ class Core(Elaboratable):
         m.d.comb += self.src8_2_select.eq(Reg8.NONE)
         m.d.comb += self.alu8_func.eq(ALU8Func.NONE)
         m.d.ph1 += self.VMA.eq(1)
+        m.d.ph1 += self.cycle.eq(self.cycle + 1)
 
         self.src_bus_setup(m, self.reg8_map, self.src8_1, self.src8_1_select)
         self.src_bus_setup(m, self.reg8_map, self.src8_2, self.src8_2_select)
@@ -176,7 +177,6 @@ class Core(Elaboratable):
 
     def fetch(self, m: Module):
         m.d.ph1 += self.instr.eq(self.Din)
-        m.d.ph1 += self.cycle.eq(1)
         m.d.ph1 += self.RW.eq(1)
         m.d.ph1 += self.pc.eq(self.pc + 1)
         m.d.ph1 += self.Addr.eq(self.pc + 1)
@@ -223,7 +223,6 @@ class Core(Elaboratable):
             m.d.ph1 += self.Addr.eq(operand)
             m.d.ph1 += self.Dout.eq(self.a)
             m.d.ph1 += self.RW.eq(0)
-            m.d.ph1 += self.cycle.eq(4)
 
         with m.If(self.cycle == 4):
             if self.verification is not None:
@@ -277,14 +276,12 @@ class Core(Elaboratable):
             m.d.ph1 += self.pc.eq(self.pc + 1)
             m.d.ph1 += self.Addr.eq(self.pc + 1)
             m.d.ph1 += self.RW.eq(1)
-            m.d.ph1 += self.cycle.eq(2)
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
 
         with m.If(self.cycle == 2):
             m.d.ph1 += self.tmp16[:8].eq(self.Din)
             m.d.ph1 += self.pc.eq(self.pc + 1)
-            m.d.ph1 += self.cycle.eq(3)
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
 
