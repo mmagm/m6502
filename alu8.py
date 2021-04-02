@@ -22,17 +22,8 @@ from nmigen import ClockDomain, ClockSignal
 from nmigen.build import Platform
 from nmigen.cli import main_parser, main_runner
 from nmigen.asserts import Assert, Assume
+from consts import Flags
 
-
-# Flags
-
-_N = 7
-_V = 6
-_B = 4
-_D = 3
-_I = 2
-_Z = 1
-_C = 0
 
 class ALU8Func(IntEnum):
     NONE = 0
@@ -73,11 +64,11 @@ class ALU8(Elaboratable):
         with m.Switch(self.func):
             with m.Case(ALU8Func.LD):
                 m.d.comb += self.output.eq(self.input2)
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
 
             with m.Case(ALU8Func.ADC):
-                carry_in = self.sr_flags[_C]
+                carry_in = self.sr_flags[Flags.C]
 
                 sum0_3 = Cat(self.output[:4], carry4)
                 m.d.comb += sum0_3.eq(self.input1[:4] +
@@ -88,13 +79,13 @@ class ALU8(Elaboratable):
                 sum7 = Cat(self.output[7], carry8)
                 m.d.comb += sum7.eq(self.input1[7] + self.input2[7] + carry7)
                 m.d.comb += overflow.eq(carry7 ^ carry8)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
-                m.d.comb += self._sr_flags[_V].eq(overflow)
-                m.d.comb += self._sr_flags[_C].eq(carry8)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.V].eq(overflow)
+                m.d.comb += self._sr_flags[Flags.C].eq(carry8)
 
             with m.Case(ALU8Func.SBC):
-                carry_in = self.sr_flags[_C]
+                carry_in = self.sr_flags[Flags.C]
 
                 sum0_6 = Cat(self.output[:7], carry7)
                 m.d.comb += sum0_6.eq(self.input1[:7] +
@@ -102,10 +93,10 @@ class ALU8(Elaboratable):
                 sum7 = Cat(self.output[7], carry8)
                 m.d.comb += sum7.eq(self.input1[7] + ~self.input2[7] + carry7)
                 m.d.comb += overflow.eq(carry7 ^ carry8)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
-                m.d.comb += self._sr_flags[_V].eq(overflow)
-                m.d.comb += self._sr_flags[_C].eq(~carry8)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.V].eq(overflow)
+                m.d.comb += self._sr_flags[Flags.C].eq(~carry8)
 
             with m.Case(ALU8Func.SUB):
                 sum0_6 = Cat(self.output[:7], carry7)
@@ -113,24 +104,24 @@ class ALU8(Elaboratable):
                 sum7 = Cat(self.output[7], carry8)
                 m.d.comb += sum7.eq(self.input1[7] + ~self.input2[7] + carry7)
                 m.d.comb += overflow.eq(carry7 ^ carry8)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
-                m.d.comb += self._sr_flags[_C].eq(~carry8)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.C].eq(~carry8)
 
             with m.Case(ALU8Func.ORA):
                 m.d.comb += self.output.eq(self.input1 | self.input2)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
 
             with m.Case(ALU8Func.AND):
                 m.d.comb += self.output.eq(self.input1 & self.input2)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
 
             with m.Case(ALU8Func.EOR):
                 m.d.comb += self.output.eq(self.input1 ^ self.input2)
-                m.d.comb += self._sr_flags[_N].eq(self.output[7])
-                m.d.comb += self._sr_flags[_Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
 
         return m
 
@@ -154,14 +145,14 @@ if __name__ == "__main__":
 
     # NV-BDIZC
     m.d.comb += Assert(alu._sr_flags[5] == 1)
-    m.d.comb += Assert(alu._sr_flags[_B] == 0)
-    m.d.comb += Assert(alu._sr_flags[_D] == 0)
-    m.d.comb += Assert(alu._sr_flags[_I] == 0)
+    m.d.comb += Assert(alu._sr_flags[Flags.B] == 0)
+    m.d.comb += Assert(alu._sr_flags[Flags.D] == 0)
+    m.d.comb += Assert(alu._sr_flags[Flags.I] == 0)
 
     with m.Switch(alu.func):
         with m.Case(ALU8Func.ADC):
             # sumN = input1[:N] + input2[:N] (so sumN[N-1] is the carry bit)
-            m.d.comb += carry_in.eq(alu.sr_flags[_C])
+            m.d.comb += carry_in.eq(alu.sr_flags[Flags.C])
             h = sum5[4]
             n = sum9[7]
             c = sum9[8]
@@ -172,14 +163,14 @@ if __name__ == "__main__":
                 sum8.eq(alu.input1[:7] + alu.input2[:7] + carry_in),
                 sum5.eq(alu.input1[:4] + alu.input2[:4] + carry_in),
                 Assert(alu.output == sum9[:8]),
-                Assert(alu._sr_flags[_N] == n),
-                Assert(alu._sr_flags[_Z] == z),
-                Assert(alu._sr_flags[_V] == v),
-                Assert(alu._sr_flags[_C] == c),
-                Assert(alu._sr_flags[_I] == alu.sr_flags[_I]),
+                Assert(alu._sr_flags[Flags.N] == n),
+                Assert(alu._sr_flags[Flags.Z] == z),
+                Assert(alu._sr_flags[Flags.V] == v),
+                Assert(alu._sr_flags[Flags.C] == c),
+                Assert(alu._sr_flags[Flags.I] == alu.sr_flags[Flags.I]),
             ]
         with m.Case(ALU8Func.SBC):
-            m.d.comb += carry_in.eq(alu.sr_flags[_C])
+            m.d.comb += carry_in.eq(alu.sr_flags[Flags.C])
             n = sum9[7]
             c = ~sum9[8]
             z = (sum9[:8] == 0)
@@ -190,11 +181,11 @@ if __name__ == "__main__":
                 Assert(sum9[:8] == (
                     alu.input1 - alu.input2 - carry_in)[:8]),
                 Assert(alu.output == sum9[:8]),
-                Assert(alu._sr_flags[_N] == n),
-                Assert(alu._sr_flags[_Z] == z),
-                Assert(alu._sr_flags[_V] == v),
-                Assert(alu._sr_flags[_C] == c),
-                Assert(alu._sr_flags[_I] == alu.sr_flags[_I]),
+                Assert(alu._sr_flags[Flags.N] == n),
+                Assert(alu._sr_flags[Flags.Z] == z),
+                Assert(alu._sr_flags[Flags.V] == v),
+                Assert(alu._sr_flags[Flags.C] == c),
+                Assert(alu._sr_flags[Flags.I] == alu.sr_flags[Flags.I]),
             ]
 
     main_runner(parser, args, m, ports=alu.input_ports() + [ph1clk, rst])

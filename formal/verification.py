@@ -19,14 +19,8 @@ from typing import List, Optional
 from nmigen import Signal, Value, Module, Cat, Array
 from nmigen.asserts import Assert
 from nmigen.hdl.ast import Statement
+from consts import Flags
 
-_N = 7
-_V = 6
-_B = 4
-_D = 3
-_I = 2
-_Z = 1
-_C = 0
 
 class Verification(object):
     def __init__(self):
@@ -48,19 +42,19 @@ class Verification(object):
               Z: Value = None,
               C: Value = None) -> Value:
         if N is None:
-            N = prev[_N]
+            N = prev[Flags.N]
         if V is None:
-            V = prev[_V]
+            V = prev[Flags.V]
         if B is None:
-            B = prev[_B]
+            B = prev[Flags.B]
         if D is None:
-            D = prev[_D]
+            D = prev[Flags.D]
         if I is None:
-            I = prev[_I]
+            I = prev[Flags.I]
         if Z is None:
-            Z = prev[_Z]
+            Z = prev[Flags.Z]
         if C is None:
-            C = prev[_C]
+            C = prev[Flags.C]
 
         return Cat(C, Z, I, D, B, 1, V, N)
 
@@ -78,14 +72,14 @@ class Verification(object):
         expectedFlags = Signal(8)
         m.d.comb += expectedFlags.eq(self.flags(pre_flags, N, V, B, D, I, Z, C))
         m.d.comb += [
-            Assert(post_flags[_N] == expectedFlags[_N]),
-            Assert(post_flags[_V] == expectedFlags[_V]),
-            Assert(post_flags[5] == expectedFlags[5]),
-            Assert(post_flags[_B] == expectedFlags[_B]),
-            Assert(post_flags[_D] == expectedFlags[_D]),
-            Assert(post_flags[_I] == expectedFlags[_I]),
-            Assert(post_flags[_Z] == expectedFlags[_Z]),
-            Assert(post_flags[_C] == expectedFlags[_C]),
+            Assert(post_flags[Flags.N] == expectedFlags[Flags.N]),
+            Assert(post_flags[Flags.V] == expectedFlags[Flags.V]),
+            Assert(post_flags[Flags._] == expectedFlags[Flags._]),
+            Assert(post_flags[Flags.B] == expectedFlags[Flags.B]),
+            Assert(post_flags[Flags.D] == expectedFlags[Flags.D]),
+            Assert(post_flags[Flags.I] == expectedFlags[Flags.I]),
+            Assert(post_flags[Flags.Z] == expectedFlags[Flags.Z]),
+            Assert(post_flags[Flags.C] == expectedFlags[Flags.C]),
         ]
 
 

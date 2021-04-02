@@ -17,9 +17,6 @@ from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
 
-# Flag
-_C = 0
-
 
 class Formal(Verification):
     def __init__(self):

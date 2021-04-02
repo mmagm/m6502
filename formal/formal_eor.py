@@ -18,6 +18,7 @@ from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
 
+
 class Formal(Verification):
     def __init__(self):
         pass

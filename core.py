@@ -29,6 +29,7 @@ from nmigen.back.pysim import Simulator #, Delay
 
 from formal.verification import FormalData, Verification
 from alu8 import ALU8Func, ALU8
+from consts import AddressModes
 
 class Reg8(IntEnum):
     """Values for specifying an 8-bit register for things

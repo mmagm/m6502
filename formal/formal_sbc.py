@@ -17,9 +17,7 @@ from nmigen import Signal, Value, Cat, Module
 from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
-
-# Flag
-_C = 0
+from consts import Flags
 
 
 class Formal(Verification):
@@ -54,7 +52,7 @@ class Formal(Verification):
         z = (sum9[:8] == 0)
         v = (sum8[7] ^ sum9[8])
 
-        m.d.comb += carry_in.eq(data.pre_sr_flags[_C])
+        m.d.comb += carry_in.eq(data.pre_sr_flags[Flags.C])
 
         input1 = data.pre_a
         input2 = data.read_data[2]
