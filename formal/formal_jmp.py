@@ -24,7 +24,7 @@ class Formal(Verification):
         pass
 
     def valid(self, instr: Value) -> Value:
-        return instr.matches(0x4C)
+        return instr.matches("01-01100")
 
     def check(self, m: Module, instr: Value, data: FormalData):
         m.d.comb += [
@@ -33,12 +33,21 @@ class Formal(Verification):
             Assert(data.post_x == data.pre_x),
             Assert(data.post_y == data.pre_y),
             Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_written == 0),
+            Assert(data.addresses_written == 0)
         ]
-        m.d.comb += [
-            Assert(data.addresses_read == 2),
-            Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-            Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-            Assert(
-                data.post_pc == Cat(data.read_data[1], data.read_data[0])),
-        ]
+
+        with m.If(instr == 0x4C):
+            m.d.comb += [
+                Assert(data.addresses_read == 2),
+                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
+                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
+                Assert(data.post_pc == Cat(data.read_data[1], data.read_data[0])),
+            ]
+
+        with m.If(instr == 0x6C):
+            m.d.comb += [
+                Assert(data.addresses_read == 4),
+                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
+                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
+                Assert(data.post_pc == Cat(data.read_data[3], data.read_data[2])),
+            ]

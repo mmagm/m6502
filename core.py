@@ -120,6 +120,11 @@ class Core(Elaboratable):
         self.reset_state = Signal(2)  # where we are during reset
         self.cycle = Signal(4)        # where we are during instr processing
 
+        # mode bits
+        self.mode_a = Signal(3)
+        self.mode_b = Signal(3)
+        self.mode_c = Signal(2)
+
         self.end_instr_flag = Signal()    # performs end-of-instruction actions
         self.end_instr_addr = Signal(16)  # where the next instruction is
 
@@ -141,6 +146,12 @@ class Core(Elaboratable):
         m.d.comb += self.alu8_func.eq(ALU8Func.NONE)
         m.d.ph1 += self.VMA.eq(1)
         m.d.ph1 += self.cycle.eq(self.cycle + 1)
+
+        #   76543210
+        #   aaabbbcc
+        m.d.comb += self.mode_a.eq(self.instr[5:8])
+        m.d.comb += self.mode_b.eq(self.instr[2:5])
+        m.d.comb += self.mode_c.eq(self.instr[0:2])
 
         self.src_bus_setup(m, self.reg8_map, self.src8_1, self.src8_1_select)
         self.src_bus_setup(m, self.reg8_map, self.src8_2, self.src8_2_select)
@@ -186,8 +197,8 @@ class Core(Elaboratable):
         with m.Switch(self.instr):
             with m.Case(0xEA):
                 self.NOP(m)
-            with m.Case(0x4C):
-                self.JMPabs(m)
+            with m.Case("01-01100"):
+                self.JMP(m)
             with m.Case(0x8D):
                 self.STAabs(m)
             with m.Case(0xAD):
@@ -230,11 +241,21 @@ class Core(Elaboratable):
                 self.formal_data.write(m, self.Addr, self.Dout)
             self.end_instr(m, self.pc)
 
-    def JMPabs(self, m: Module):
-        operand = self.mode_abs(m)
+    def JMP(self, m: Module):
+        # 0b01001100: 0x4C jmp $hhll
+        # 0b01101100: 0x6C jmp ($hhll)
 
-        with m.If(self.cycle == 2):
-            self.end_instr(m, operand)
+        with m.If(self.mode_a == 2):
+            operand = self.mode_abs(m)
+
+            with m.If(self.cycle == 2):
+                self.end_instr(m, operand)
+
+        with m.Elif(self.mode_a == 3):
+            operand = self.mode_indirect(m)
+
+            with m.If(self.cycle == 4):
+                self.end_instr(m, operand)
 
     def ALUabs(self, m: Module, func: ALU8Func, store: bool = True):
         operand = self.mode_abs(m)
@@ -285,6 +306,37 @@ class Core(Elaboratable):
             m.d.ph1 += self.pc.eq(self.pc + 1)
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
+
+        return operand
+
+    def mode_indirect(self, m: Module):
+        pointer = self.mode_abs(m)
+
+        with m.If(self.cycle == 3):
+            m.d.ph1 += self.tmp16[8:].eq(self.Din)
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+            m.d.ph1 += self.Addr.eq(pointer)
+            m.d.ph1 += self.RW.eq(1)
+
+            if self.verification is not None:
+                self.formal_data.read(m, self.Addr, self.Din)
+
+        with m.If(self.cycle == 4):
+            next_addr = pointer
+            with m.If(pointer[:8] == 0xFF):
+                next_addr = Cat(0x00, pointer[8:])
+            with m.Else():
+                next_addr = pointer + 1
+
+            m.d.ph1 += self.tmp16[:8].eq(self.Din)
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+            m.d.ph1 += self.Addr.eq(next_addr)
+            m.d.ph1 += self.RW.eq(1)
+
+            if self.verification is not None:
+                self.formal_data.read(m, self.Addr, self.Din)
+
+        operand = Mux(self.cycle == 4, Cat(self.Din, self.tmp16[8:]), self.tmp16)
 
         return operand
 
