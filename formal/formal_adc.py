@@ -18,34 +18,22 @@ from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
 from consts import Flags
+from .alu_verification import AluVerification
 
 
-class Formal(Verification):
+class Formal(AluVerification):
     def __init__(self):
         pass
 
     def valid(self, instr: Value) -> Value:
-        return instr.matches(0x6D)
+        return instr.matches("011---01")
 
     def check(self, m: Module, instr: Value, data: FormalData):
+        input1, input2, actual_output = self.common_check(m, instr, data)
+
         carry_in = Signal()
         sum9 = Signal(9)
         sum8 = Signal(8)
-
-        m.d.comb += [
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_written == 0),
-        ]
-        m.d.comb += [
-            Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-            Assert(data.addresses_read == 3),
-            Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-            Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-            Assert(
-                data.read_addr[2] == Cat(data.read_data[1], data.read_data[0])),
-        ]
 
         n = sum9[7]
         c = sum9[8]
@@ -54,14 +42,10 @@ class Formal(Verification):
 
         m.d.comb += carry_in.eq(data.pre_sr_flags[Flags.C])
 
-        input1 = data.pre_a
-        input2 = data.read_data[2]
-        output = data.post_a
-
         m.d.comb += [
             sum9.eq(input1 + input2 + carry_in),
             sum8.eq(input1[:7] + input2[:7] + carry_in),
-            Assert(output == sum9[:8]),
+            Assert(actual_output == sum9[:8]),
         ]
         self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags,
                          Z=z, N=n, V=v, C=c)

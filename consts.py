@@ -18,15 +18,14 @@ from enum import IntEnum
 
 class AddressModes(IntEnum):
     """Decoding of bits 4, 3, and 2 for instructions."""
-    IMMEDIATE = 0  # immediate
+    INDIRECT_X = 0 # (indirect,X)
     ZEROPAGE = 1   # zeropage
-    ZEROPAGE_X = 2 # zeropage,X
+    IMMEDIATE = 2  # immediate
     ABSOLUTE = 3   # absolute
-    ABSOLUTE_X = 4 # absolute,X
-    ABSOLUTE_Y = 5 # absolute,Y
-    # INDIRECT JMP $(HHLL)
-    INDIRECT_X = 6 # (indirect,X)
-    INDIRECT_Y = 7 # (indirect),Y
+    INDIRECT_Y = 4 # (indirect),Y
+    ZEROPAGE_X = 5 # zeropage,X
+    ABSOLUTE_Y = 6 # absolute,Y
+    ABSOLUTE_X = 7 # absolute,X
 
 
 class Flags(IntEnum):

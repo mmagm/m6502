@@ -18,34 +18,22 @@ from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
 from consts import Flags
+from .alu_verification import AluVerification
 
 
-class Formal(Verification):
+class Formal(AluVerification):
     def __init__(self):
         pass
 
     def valid(self, instr: Value) -> Value:
-        return instr.matches(0xED)
+        return instr.matches("111---01")
 
     def check(self, m: Module, instr: Value, data: FormalData):
+        input1, input2, actual_output = self.common_check(m, instr, data)
+
         carry_in = Signal()
         sum9 = Signal(9)
         sum8 = Signal(8)
-
-        m.d.comb += [
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_written == 0),
-        ]
-        m.d.comb += [
-            Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-            Assert(data.addresses_read == 3),
-            Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-            Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-            Assert(
-                data.read_addr[2] == Cat(data.read_data[1], data.read_data[0])),
-        ]
 
         n = sum9[7]
         c = ~sum9[8]

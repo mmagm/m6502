@@ -16,37 +16,25 @@ from nmigen import Signal, Value, Cat, Module, Mux
 from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
+from .alu_verification import AluVerification
 
 
-class Formal(Verification):
+class Formal(AluVerification):
     def __init__(self):
         pass
 
     def valid(self, instr: Value) -> Value:
-        return instr.matches(0x2C)
+        return instr.matches("0010-100")
 
     def check(self, m: Module, instr: Value, data: FormalData):
-        m.d.comb += [
-            Assert(data.post_a == data.pre_a),
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_written == 0),
-        ]
-        m.d.comb += [
-            Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-            Assert(data.addresses_read == 3),
-            Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-            Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-            Assert(
-                data.read_addr[2] == Cat(data.read_data[1], data.read_data[0])),
-        ]
+        input1, input2, actual_output = self.common_check(m, instr, data)
 
-        input1 = data.pre_a
-        input2 = data.read_data[2]
-        output = input1 & input2
-        z = output == 0
-        n = output[7]
+        output = input1
 
+        flag_output = input1 & input2
+        z = flag_output == 0
+        n = flag_output[7]
+
+        m.d.comb += Assert(actual_output == output)
         self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags,
                          Z=z, N=n)
