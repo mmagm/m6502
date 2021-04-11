@@ -68,7 +68,7 @@ class AluVerification(Verification):
                 Assert(data.addresses_read == 3),
                 Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
                 Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-                Assert(data.read_addr[2] == Cat(data.read_data[1], data.read_data[0])),
+                Assert(data.read_addr[2] == Cat(data.read_data[0], data.read_data[1])),
                 input2.eq(data.read_data[2]),
             ]
 

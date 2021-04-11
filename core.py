@@ -92,6 +92,9 @@ class Core(Elaboratable):
         self.adh = self.Addr[8:]
         self.adl = self.Addr[:8]
 
+        self.pcl = self.pc[:8]
+        self.pch = self.pc[8:]
+
         # busses
         self.src8_1 = Signal(8)  # Input 1 of the ALU
         self.src8_2 = Signal(8)  # Input 2 of the ALU
@@ -229,8 +232,8 @@ class Core(Elaboratable):
                 self.NOP(m)
             with m.Case("01-01100"):
                 self.JMP(m)
-            with m.Case(0x8D):
-                self.STAabs(m)
+            with m.Case("100---01"):
+                self.STA(m)
             with m.Case("101---01"):
                 self.ALU(m, ALU8Func.LD)
             with m.Case("011---01"):
@@ -290,30 +293,162 @@ class Core(Elaboratable):
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
 
-    def STAabs(self, m: Module):
-        operand = self.mode_abs(m)
+    # def STX(self, m: Module):
+    #     self.store(m, index=Signal)
 
-        with m.If(self.cycle == 2):
-            m.d.ph1 += self.VMA.eq(0)
-            m.d.ph1 += self.Addr.eq(operand)
-            m.d.ph1 += self.RW.eq(1)
+    # def STY(self, m: Module):
+    #     self.store(m, index=Signal)
 
-        with m.If(self.cycle == 3):
-            m.d.ph1 += self.Addr.eq(operand)
-            m.d.ph1 += self.Dout.eq(self.a)
-            m.d.ph1 += self.RW.eq(0)
+    # def store(self, m: Module, index: Signal):
+    #     pass
 
-        with m.If(self.cycle == 4):
-            if self.verification is not None:
-                self.formal_data.write(m, self.Addr, self.Dout)
-            self.end_instr(m, self.pc)
+    def STA(self, m: Module):
+        with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
+            operand = self.mode_zeropage(m)
+
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 3):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_X.value):
+            operand = self.mode_zeropage_x(m)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 4):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
+            operand = self.mode_absolute(m)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 4):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ABSOLUTE_X.value):
+            operand = self.mode_absolute(m)
+
+            sum9 = self.tmp16l + self.x
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.tmp16l.eq(sum9[:8])
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.tmp16h.eq(self.tmp16h + sum9[8])
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 4):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 5):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ABSOLUTE_Y.value):
+            operand = self.mode_absolute(m)
+
+            sum9 = self.tmp16l + self.y
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.tmp16l.eq(sum9[:8])
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.tmp16h.eq(self.tmp16h + sum9[8])
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 4):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 5):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.INDIRECT_X.value):
+            operand = self.mode_indirect_x(m)
+
+            with m.If(self.cycle == 4):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.adl.eq(operand)
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 5):
+                m.d.ph1 += self.adl.eq(operand)
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 6):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.INDIRECT_Y.value):
+            operand = self.mode_indirect_y(m, write=True)
+
+            with m.If(self.cycle == 4):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 5):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.a)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 6):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
 
     def JMP(self, m: Module):
         # 0b01001100: 0x4C jmp $hhll
         # 0b01101100: 0x6C jmp ($hhll)
 
         with m.If(self.mode_a == 2):
-            operand = self.mode_abs(m)
+            operand = self.mode_absolute(m)
 
             with m.If(self.cycle == 2):
                 self.end_instr(m, operand)
@@ -366,7 +501,7 @@ class Core(Elaboratable):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
-            operand = self.mode_abs(m)
+            operand = self.mode_absolute(m)
 
             self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
 
@@ -380,7 +515,33 @@ class Core(Elaboratable):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.INDIRECT_Y.value):
-            self.mode_indirect_y(m, func=func)
+            self.mode_indirect_y(m)
+
+            with m.If(self.cycle == 5):
+                # assign value from input
+                m.d.comb += self.src8_2.eq(self.Din)
+                m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.alu8_func.eq(func)
+
+                if self.verification is not None:
+                    self.formal_data.read(m, self.Addr, self.Din)
+
+                if store:
+                    m.d.ph1 += self.a.eq(self.alu8)
+
+            # read from corrected address
+            with m.If(self.cycle == 6):
+                m.d.comb += self.src8_2.eq(self.Din)
+                m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.alu8_func.eq(func)
+
+                if self.verification is not None:
+                    self.formal_data.read(m, self.Addr, self.Din)
+
+                if store:
+                    m.d.ph1 += self.a.eq(self.alu8)
+
+                self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ZEROPAGE_X.value):
             operand = self.mode_zeropage_x(m)
@@ -397,15 +558,15 @@ class Core(Elaboratable):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_Y.value):
-            self.mode_abs_indexed(m, func=func, index=self.y)
+            self.mode_absolute_indexed(m, func=func, index=self.y)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_X.value):
-            self.mode_abs_indexed(m, func=func, index=self.x)
+            self.mode_absolute_indexed(m, func=func, index=self.x)
 
     def mode_indirect_x(self, m: Module) -> Statement:
         """Generates logic to get 8-bit operand for indexed indirect addressing instructions.
         """
-        value = self.tmp8
+        value = Mux(self.cycle == 4, self.Din, self.tmp8)
 
         with m.If(self.cycle == 1):
             # fetch pointer and add X reg
@@ -488,7 +649,7 @@ class Core(Elaboratable):
         operand = Mux(self.cycle == 1, self.Din, self.tmp16)
 
         with m.If(self.cycle == 1):
-            m.d.ph1 += self.tmp16l.eq(self.Din)
+            m.d.ph1 += self.tmp16l.eq(self.Din + self.x)
             m.d.ph1 += self.tmp16h.eq(0)
             m.d.ph1 += self.pc.eq(self.pc + 1)
             m.d.ph1 += self.Addr.eq(self.pc + 1)
@@ -497,21 +658,21 @@ class Core(Elaboratable):
                 self.formal_data.read(m, self.Addr, self.Din)
 
         with m.If(self.cycle == 2):
-            m.d.ph1 += self.tmp16l.eq(self.tmp16l + self.x)
+            # m.d.ph1 += self.tmp16l.eq(self.tmp16l + self.x)
             m.d.ph1 += self.tmp16h.eq(0)
 
         return operand
 
-    def mode_abs(self, m: Module) -> Statement:
+    def mode_absolute(self, m: Module) -> Statement:
         """Generates logic to get the 16-bit operand for extended mode instructions.
 
         Returns a Statement containing the 16-bit operand. After cycle 2, tmp16
         contains the operand.
         """
-        operand = Mux(self.cycle == 2, Cat(self.Din, self.tmp16[8:]), self.tmp16)
+        operand = Mux(self.cycle == 2, Cat(self.tmp16l, self.Din), self.tmp16)
 
         with m.If(self.cycle == 1):
-            m.d.ph1 += self.tmp16[8:].eq(self.Din)
+            m.d.ph1 += self.tmp16l.eq(self.Din)
             m.d.ph1 += self.pc.eq(self.pc + 1)
             m.d.ph1 += self.Addr.eq(self.pc + 1)
             m.d.ph1 += self.RW.eq(1)
@@ -519,15 +680,19 @@ class Core(Elaboratable):
                 self.formal_data.read(m, self.Addr, self.Din)
 
         with m.If(self.cycle == 2):
-            m.d.ph1 += self.tmp16[:8].eq(self.Din)
+            m.d.ph1 += self.tmp16h.eq(self.Din)
             m.d.ph1 += self.pc.eq(self.pc + 1)
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
 
         return operand
 
-    def mode_indirect_y(self, m: Module, func: ALU8Func, store: bool = True):
-        overflow = Signal()
+    def mode_indirect_y(self, m: Module, write: bool = False) -> Statement:
+        sum9 = self.tmp16l + self.y
+        sum8 = sum9[:8]
+        overflow = sum9[8]
+
+        operand = Cat(sum8, self.tmp16h)
 
         # fetch pointer
         with m.If(self.cycle == 1):
@@ -549,63 +714,44 @@ class Core(Elaboratable):
                 self.formal_data.read(m, self.Addr, self.Din)
 
         with m.If(self.cycle == 3):
-            m.d.ph1 += self.tmp16h.eq(self.Din)
-            # add low tmp16 y reg
-            m.d.ph1 += self.tmp16l.eq((self.tmp16l + self.y)[:8])
-            m.d.ph1 += overflow.eq((self.tmp16l + self.y)[8])
+            if write:
+                m.d.ph1 += self.tmp16h.eq(self.Din + overflow)
+            else:
+                m.d.ph1 += self.tmp16h.eq(self.Din + overflow)
+
+            if self.verification is not None:
+                self.formal_data.read(m, self.Addr, self.Din)
 
         with m.If(self.cycle == 4):
             # fix the high byte if overflowed
-            with m.If(overflow):
-                m.d.ph1 += self.tmp16h.eq(self.tmp16h + 1)
+            if not write:
+                m.d.ph1 += self.tmp16h.eq(self.tmp16h + overflow)
 
-            # address if correct, read byte
-            with m.Else():
-                m.d.ph1 += self.Addr.eq(self.tmp16)
-                m.d.ph1 += self.RW.eq(1)
-                if self.verification is not None:
-                    self.formal_data.read(m, self.Addr, self.Din)
+            # read byte (invalid if overflowed)
+            m.d.ph1 += self.Addr.eq(operand)
+            m.d.ph1 += self.RW.eq(1)
+
+            if self.verification is not None:
+                self.formal_data.read(m, self.Addr, self.Din)
 
         # read from effective address unless page boundery crossed
         # or correcting address
         with m.If(self.cycle == 5):
             with m.If(overflow):
                 # prepare to read corrected address
-                m.d.ph1 += self.Addr.eq(self.tmp16)
+                m.d.ph1 += self.Addr.eq(operand)
                 m.d.ph1 += self.RW.eq(1)
+
                 if self.verification is not None:
                     self.formal_data.read(m, self.Addr, self.Din)
 
             with m.Else():
-                # assign readed value
-                m.d.comb += self.src8_2.eq(self.Din)
-                m.d.comb += self.src8_1.eq(self.a)
-                m.d.comb += self.alu8_func.eq(func)
+                if not write:
+                    self.end_instr(m, self.pc)
 
-                if self.verification is not None:
-                    self.formal_data.read(m, self.Addr, self.Din)
+        return operand
 
-                if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
-
-                self.end_instr(m, self.pc)
-
-        # read from corrected address
-        with m.If(self.cycle == 6):
-            with m.If(overflow):
-                m.d.comb += self.src8_2.eq(self.Din)
-                m.d.comb += self.src8_1.eq(self.a)
-                m.d.comb += self.alu8_func.eq(func)
-
-                if self.verification is not None:
-                    self.formal_data.read(m, self.Addr, self.Din)
-
-                if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
-
-                self.end_instr(m, self.pc)
-
-    def mode_abs_indexed(self, m: Module, func: ALU8Func, index: Signal, store: bool = True):
+    def mode_absolute_indexed(self, m: Module, func: ALU8Func, index: Signal, store: bool = True):
         sum9 = Signal(9)
         overflow = sum9[8]
 
@@ -682,33 +828,29 @@ class Core(Elaboratable):
         contains the address.
         """
 
-        pointer = self.mode_abs(m)
+        pointer = self.mode_absolute(m)
 
-        with m.If(self.cycle == 3):
-            m.d.ph1 += self.tmp16[8:].eq(self.Din)
-            m.d.ph1 += self.pc.eq(self.pc + 1)
+        with m.If(self.cycle == 2):
             m.d.ph1 += self.Addr.eq(pointer)
             m.d.ph1 += self.RW.eq(1)
 
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
 
-        with m.If(self.cycle == 4):
-            next_addr = pointer
-            with m.If(pointer[:8] == 0xFF):
-                next_addr = Cat(0x00, pointer[8:])
-            with m.Else():
-                next_addr = pointer + 1
+        with m.If(self.cycle == 3):
+            m.d.ph1 += self.pcl.eq(self.Din)
 
-            m.d.ph1 += self.tmp16[:8].eq(self.Din)
-            m.d.ph1 += self.pc.eq(self.pc + 1)
-            m.d.ph1 += self.Addr.eq(next_addr)
+            m.d.ph1 += self.adl.eq(pointer[:8] + 1)
+            m.d.ph1 += self.adh.eq(pointer[8:])
             m.d.ph1 += self.RW.eq(1)
 
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
 
-        operand = Mux(self.cycle == 4, Cat(self.Din, self.tmp16[8:]), self.tmp16)
+        with m.If(self.cycle == 4):
+            m.d.ph1 += self.pch.eq(self.Din)
+
+        operand = Mux(self.cycle == 4, Cat(self.pcl, self.Din), self.pc)
 
         return operand
 
