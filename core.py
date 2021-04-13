@@ -234,6 +234,10 @@ class Core(Elaboratable):
                 self.JMP(m)
             with m.Case("100---01"):
                 self.STA(m)
+            with m.Case(0x86,0x96,0x8E):
+                self.STX(m)
+            with m.Case(0x84,0x94,0x8C):
+                self.STY(m)
             with m.Case("101---01"):
                 self.ALU(m, ALU8Func.LD)
             with m.Case("011---01"):
@@ -293,14 +297,115 @@ class Core(Elaboratable):
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
 
-    # def STX(self, m: Module):
-    #     self.store(m, index=Signal)
+    def STX(self, m: Module):
+        with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
+            operand = self.mode_zeropage(m)
 
-    # def STY(self, m: Module):
-    #     self.store(m, index=Signal)
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
 
-    # def store(self, m: Module, index: Signal):
-    #     pass
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.x)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 3):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
+            operand = self.mode_zeropage_indexed(m, index=self.y)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.y)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 4):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
+            operand = self.mode_absolute(m)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.x)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 4):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+    def STY(self, m: Module):
+        with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
+            operand = self.mode_zeropage(m)
+
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.y)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 3):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
+            operand = self.mode_zeropage_indexed(m, index=self.x)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.y)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 4):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
+
+        with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
+            operand = self.mode_absolute(m)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.VMA.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.Dout.eq(self.y)
+                m.d.ph1 += self.RW.eq(0)
+
+            with m.If(self.cycle == 4):
+                if self.verification is not None:
+                    self.formal_data.write(m, self.Addr, self.Dout)
+                self.end_instr(m, self.pc)
 
     def STA(self, m: Module):
         with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
@@ -321,8 +426,8 @@ class Core(Elaboratable):
                     self.formal_data.write(m, self.Addr, self.Dout)
                 self.end_instr(m, self.pc)
 
-        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_X.value):
-            operand = self.mode_zeropage_x(m)
+        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
+            operand = self.mode_zeropage_indexed(m, index=self.x)
 
             with m.If(self.cycle == 2):
                 m.d.ph1 += self.VMA.eq(0)
@@ -543,8 +648,8 @@ class Core(Elaboratable):
 
                 self.end_instr(m, self.pc)
 
-        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_X.value):
-            operand = self.mode_zeropage_x(m)
+        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
+            operand = self.mode_zeropage_indexed(m, index=self.x)
 
             self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
 
@@ -640,7 +745,7 @@ class Core(Elaboratable):
 
         return operand
 
-    def mode_zeropage_x(self, m: Module) -> Statement:
+    def mode_zeropage_indexed(self, m: Module, index: Signal) -> Statement:
         """Generates logic to get the 8-bit zero-page address for zeropage X mode instructions.
 
         Returns a Statement containing a 16-bit address where the upper byte is zero.
@@ -649,7 +754,7 @@ class Core(Elaboratable):
         operand = Mux(self.cycle == 1, self.Din, self.tmp16)
 
         with m.If(self.cycle == 1):
-            m.d.ph1 += self.tmp16l.eq(self.Din + self.x)
+            m.d.ph1 += self.tmp16l.eq(self.Din + index)
             m.d.ph1 += self.tmp16h.eq(0)
             m.d.ph1 += self.pc.eq(self.pc + 1)
             m.d.ph1 += self.Addr.eq(self.pc + 1)

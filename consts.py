@@ -23,7 +23,7 @@ class AddressModes(IntEnum):
     IMMEDIATE = 2  # immediate
     ABSOLUTE = 3   # absolute
     INDIRECT_Y = 4 # (indirect),Y
-    ZEROPAGE_X = 5 # zeropage,X
+    ZEROPAGE_IND = 5 # zeropage,X
     ABSOLUTE_Y = 6 # absolute,Y
     ABSOLUTE_X = 7 # absolute,X
 
