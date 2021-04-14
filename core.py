@@ -29,7 +29,7 @@ from nmigen.back.pysim import Simulator #, Delay
 
 from formal.verification import FormalData, Verification
 from alu8 import ALU8Func, ALU8
-from consts import AddressModes
+from consts import AddressModes, Flags
 
 
 class Reg8(IntEnum):
@@ -136,7 +136,7 @@ class Core(Elaboratable):
         self.mode_c = Signal(2)
 
         self.end_instr_flag = Signal()    # performs end-of-instruction actions
-        self.end_instr_addr = Signal(16)  # where the next instruction is
+        self.end_instr_addr= Signal(16)  # where the next instruction is
 
         # Formal verification
         self.verification = verification
@@ -232,11 +232,13 @@ class Core(Elaboratable):
                 self.NOP(m)
             with m.Case("01-01100"):
                 self.JMP(m)
+            with m.Case("---10000"):
+                self.BR(m)
             with m.Case("100---01"):
                 self.STA(m)
-            with m.Case(0x86,0x96,0x8E):
+            with m.Case(0x86, 0x96, 0x8E):
                 self.STX(m)
-            with m.Case(0x84,0x94,0x8C):
+            with m.Case(0x84, 0x94, 0x8C):
                 self.STY(m)
             with m.Case("101---01"):
                 self.ALU(m, ALU8Func.LD)
@@ -270,7 +272,7 @@ class Core(Elaboratable):
                 m.d.ph1 += self.reset_state.eq(2)
             with m.Case(2):
                 m.d.ph1 += self.reset_state.eq(3)
-                reset_vec = Cat(self.Din, self.tmp8)
+                reset_vec = Cat(self.tmp8, self.Din)
                 self.end_instr(m, reset_vec)
 
     def end_instr_flag_handler(self, m: Module):
@@ -668,6 +670,86 @@ class Core(Elaboratable):
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_X.value):
             self.mode_absolute_indexed(m, func=func, index=self.x)
 
+    # 0x90 BCC branch on carry clear
+    # 0xB0 BCS branch on carry set
+    # 0xF0 BEQ branch on equal (zero set)
+
+    # 0xD0 BNE branch on not equal (zero clear)
+
+    # 0x10 BPL branch on plus (negative clear)
+    # 0x30 BMI branch on minus (negative set)
+    # 0x50 BVC branch on overflow clear
+    # 0x70 BVS branch on overflow set
+
+    # 76543210
+    # aaabbbcc
+    # 00010000 BPL
+    # 00110000 BMI
+    # 01010000 BVC
+    # 01110000 BVS
+    # 10010000 BCC
+    # 10110000 BCS
+    # 11010000 BNE
+    # 11110000 BEQ
+
+    # "---10000"
+
+    def BR(self, m: Module):
+        operand = self.mode_immediate(m)
+
+        sum9 = Signal(9)
+        m.d.comb += sum9.eq(self.pcl + operand)
+
+        backwards = operand[7]
+        co = sum9[8]
+
+        crossed = Signal()
+        m.d.comb += crossed.eq(co ^ backwards)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.tmp16l.eq(sum9[:8])
+            m.d.ph1 += self.tmp16h.eq(self.pch)
+
+        with m.If(self.cycle == 3):
+            take_branch = self.branch_cond(m)
+
+            with m.If(take_branch):
+                with m.If(crossed):
+                    m.d.ph1 += self.tmp16h.eq(Mux(backwards,
+                                                  self.tmp16h - crossed,
+                                                  self.tmp16h + crossed))
+                with m.Else():
+                    self.end_instr(m, self.tmp16)
+
+            with m.Else():
+                self.end_instr(m, self.pc)
+
+        with m.If(self.cycle == 4):
+            self.end_instr(m, self.tmp16)
+
+    def branch_cond(self, m: Module) -> Signal:
+        cond = Signal()
+
+        with m.Switch(self.mode_a):
+            with m.Case(0): # BPL
+                m.d.comb += cond.eq(~self.sr_flags[Flags.N])
+            with m.Case(1): # BMI
+                m.d.comb += cond.eq(self.sr_flags[Flags.N])
+            with m.Case(2): # BVC
+                m.d.comb += cond.eq(~self.sr_flags[Flags.V])
+            with m.Case(3): # BVS
+                m.d.comb += cond.eq(self.sr_flags[Flags.V])
+            with m.Case(4): # BCC
+                m.d.comb += cond.eq(~self.sr_flags[Flags.C])
+            with m.Case(5): # BCS
+                m.d.comb += cond.eq(self.sr_flags[Flags.C])
+            with m.Case(6): # BNE
+                m.d.comb += cond.eq(~self.sr_flags[Flags.Z])
+            with m.Case(7): # BEQ
+                m.d.comb += cond.eq(self.sr_flags[Flags.Z])
+
+        return cond
+
     def mode_indirect_x(self, m: Module) -> Statement:
         """Generates logic to get 8-bit operand for indexed indirect addressing instructions.
         """
@@ -761,10 +843,6 @@ class Core(Elaboratable):
             m.d.ph1 += self.RW.eq(1)
             if self.verification is not None:
                 self.formal_data.read(m, self.Addr, self.Din)
-
-        with m.If(self.cycle == 2):
-            # m.d.ph1 += self.tmp16l.eq(self.tmp16l + self.x)
-            m.d.ph1 += self.tmp16h.eq(0)
 
         return operand
 
@@ -996,8 +1074,8 @@ if __name__ == "__main__":
         with m.If(Past(rst, 4) & ~Past(rst, 3) & ~Past(rst, 2) & ~Past(rst)):
             m.d.ph1 += Assert(Past(core.Addr, 2) == 0xFFFE)
             m.d.ph1 += Assert(Past(core.Addr) == 0xFFFF)
-            m.d.ph1 += Assert(core.Addr[8:] == Past(core.Din, 2))
-            m.d.ph1 += Assert(core.Addr[:8] == Past(core.Din))
+            m.d.ph1 += Assert(core.Addr[:8] == Past(core.Din, 2))
+            m.d.ph1 += Assert(core.Addr[8:] == Past(core.Din))
             m.d.ph1 += Assert(core.Addr == core.pc)
 
         main_runner(parser, args, m, ports=core.ports() + [ph1clk, rst])

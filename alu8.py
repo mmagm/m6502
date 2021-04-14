@@ -178,8 +178,7 @@ if __name__ == "__main__":
             m.d.comb += [
                 sum9.eq(alu.input1 + ~alu.input2 + ~carry_in),
                 sum8.eq(alu.input1[:7] + ~alu.input2[:7] + ~carry_in),
-                Assert(sum9[:8] == (
-                    alu.input1 - alu.input2 - carry_in)[:8]),
+                Assert(sum9[:8] == (alu.input1 - alu.input2 - carry_in)[:8]),
                 Assert(alu.output == sum9[:8]),
                 Assert(alu._sr_flags[Flags.N] == n),
                 Assert(alu._sr_flags[Flags.Z] == z),
