@@ -230,6 +230,14 @@ class Core(Elaboratable):
         with m.Switch(self.instr):
             with m.Case(0xEA):
                 self.NOP(m)
+            with m.Case("00-11000"):
+                self.CL_SE_C(m)
+            with m.Case("11-11000"):
+                self.CL_SE_D(m)
+            with m.Case("01-11000"):
+                self.CL_SE_I(m)
+            with m.Case("10111000"):
+                self.CLV(m)
             with m.Case("01-01100"):
                 self.JMP(m)
             with m.Case("---10000"):
@@ -749,6 +757,33 @@ class Core(Elaboratable):
                 m.d.comb += cond.eq(self.sr_flags[Flags.Z])
 
         return cond
+
+    def CL_SE_C(self, m: Module):
+        """Clears or sets carry flag."""
+        with m.If(self.cycle == 1):
+            m.d.comb += self.alu8_func.eq(
+                Mux(self.instr[5], ALU8Func.SEC, ALU8Func.CLC))
+            self.end_instr(m, self.pc)
+
+    def CL_SE_D(self, m: Module):
+        """Clears or sets decimal flag."""
+        with m.If(self.cycle == 1):
+            m.d.comb += self.alu8_func.eq(
+                Mux(self.instr[5], ALU8Func.SED, ALU8Func.CLD))
+            self.end_instr(m, self.pc)
+
+    def CL_SE_I(self, m: Module):
+        """Clears or sets interrupt flag."""
+        with m.If(self.cycle == 1):
+            m.d.comb += self.alu8_func.eq(
+                Mux(self.instr[5], ALU8Func.SEI, ALU8Func.CLI))
+            self.end_instr(m, self.pc)
+
+    def CLV(self, m: Module):
+        """Clears overflow flag."""
+        with m.If(self.cycle == 1):
+            m.d.comb += self.alu8_func.eq(ALU8Func.CLV)
+            self.end_instr(m, self.pc)
 
     def mode_indirect_x(self, m: Module) -> Statement:
         """Generates logic to get 8-bit operand for indexed indirect addressing instructions.
