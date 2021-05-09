@@ -115,3 +115,99 @@ class AluVerification(Verification):
             ]
 
         return (input1, input2, actual_output)
+
+
+class Alu2Verification(Verification):
+    def __init__(self):
+        pass
+
+    def common_check(self, m: Module, instr: Value, data: FormalData) -> Tuple[Value, Value, Value]:
+        mode = instr[2:5]
+        input = Signal(8)
+        actual_output = Signal(8)
+        size = Signal(3)
+
+        m.d.comb += [
+            Assert(data.post_x == data.pre_x),
+            Assert(data.post_y == data.pre_y),
+            Assert(data.post_sp == data.pre_sp)
+        ]
+
+        with m.If(mode == AddressModes.IMMEDIATE.value):
+            m.d.comb += [
+                Assert(data.post_pc == data.plus16(data.pre_pc, 1)),
+                Assert(data.addresses_read == 1),
+                Assert(data.addresses_written == 0),
+                input.eq(data.pre_a)
+            ]
+
+            m.d.comb += actual_output.eq(data.post_a)
+
+        with m.Elif(mode == AddressModes.ZEROPAGE.value):
+            m.d.comb += [
+                Assert(data.post_a == data.pre_a),
+                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
+                Assert(data.addresses_read == 2),
+                Assert(data.read_addr[1] == Cat(data.read_data[0], 0x00)),
+                input.eq(data.read_data[1])
+            ]
+
+            m.d.comb += [
+                Assert(data.addresses_written == 2),
+                Assert(data.write_addr[0] == data.read_addr[1]),
+                actual_output.eq(data.write_data[0])
+            ]
+
+        with m.Elif(mode == AddressModes.ZEROPAGE_IND.value):
+            m.d.comb += [
+                Assert(data.post_a == data.pre_a),
+                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
+                Assert(data.addresses_read == 2),
+                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
+                Assert(data.read_addr[1] == data.plus16(data.pre_x, data.read_data[0])),
+                input.eq(data.read_data[1])
+            ]
+
+            m.d.comb += [
+                Assert(data.addresses_written == 2),
+                Assert(data.write_addr[0] == data.read_addr[1]),
+                actual_output.eq(data.write_data[0])
+            ]
+
+        with m.Elif(mode == AddressModes.ABSOLUTE.value):
+            m.d.comb += [
+                Assert(data.post_a == data.pre_a),
+                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
+                Assert(data.addresses_read == 3),
+                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
+                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
+                Assert(data.read_addr[2] == Cat(data.read_data[0], data.read_data[1])),
+                input.eq(data.read_data[2]),
+            ]
+
+            m.d.comb += [
+                Assert(data.addresses_written == 2),
+                Assert(data.write_addr[0] == data.read_addr[2]),
+                Assert(data.write_addr[1] == data.read_addr[2]),
+                actual_output.eq(data.write_data[1])
+            ]
+
+        with m.Elif(mode == AddressModes.ABSOLUTE_X.value):
+            m.d.comb += [
+                Assert(data.post_a == data.pre_a),
+                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
+                Assert(data.addresses_read == 5),
+                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
+                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
+                Assert(data.read_addr[3] == data.plus16(Cat(data.read_data[0], data.read_data[1]), data.pre_x)),
+                input.eq(data.read_data[2]),
+            ]
+
+            m.d.comb += [
+                Assert(data.addresses_written == 2),
+                Assert(data.write_addr[0] == data.read_addr[3]),
+                Assert(data.write_addr[1] == data.read_addr[3]),
+                actual_output.eq(data.write_data[1])
+            ]
+
+        return (input, actual_output)

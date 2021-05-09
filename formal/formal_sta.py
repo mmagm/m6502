@@ -25,14 +25,7 @@ class Formal(Verification):
         pass
 
     def valid(self, instr: Value) -> Value:
-        # return instr.matches(0x85)   # zeropage
-        # return instr.matches(0x95) # zeropage,X
-        # return instr.matches(0x8D) # absolute
-        # return instr.matches(0x9D) # absolute,X
-        # return instr.matches(0x99) # absolute,Y
-        # return instr.matches(0x81) # (indirect,X)
-        # return instr.matches(0x91) # (indirect),Y
-        return instr.matches("100---01")
+        return instr.matches(0x85, 0x95, 0x8D, 0x9D, 0x99, 0x81, 0x91)
 
     def check(self, m: Module, instr: Value, data: FormalData):
         written_data = data.pre_a

@@ -41,7 +41,12 @@ class ALU8Func(IntEnum):
     CLI = 12
     SEI = 13
     CLV = 14
-
+    INC = 15
+    DEC = 16
+    ASL = 17
+    LSR = 18
+    ROL = 19
+    ROR = 20
 
 class ALU8(Elaboratable):
     def __init__(self):
@@ -151,6 +156,44 @@ class ALU8(Elaboratable):
 
             with m.Case(ALU8Func.CLV):
                 m.d.comb += self._sr_flags[Flags.V].eq(0)
+
+            with m.Case(ALU8Func.INC):
+                m.d.comb += self.output.eq(self.input1 + 1)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+
+            with m.Case(ALU8Func.DEC):
+                m.d.comb += self.output.eq(self.input1 - 1)
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+
+            with m.Case(ALU8Func.ASL):
+                m.d.comb += self.output.eq(Cat(0, self.input1[:7]))
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.C].eq(self.input1[7])
+
+            with m.Case(ALU8Func.LSR):
+                m.d.comb += self.output.eq(Cat(self.input1[1:8], 0))
+                m.d.comb += self._sr_flags[Flags.N].eq(0)
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.C].eq(self.input1[0])
+
+            with m.Case(ALU8Func.ROL):
+                carry_in = self.sr_flags[Flags.C]
+
+                m.d.comb += self.output.eq(Cat(carry_in, self.input1[:7]))
+                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.C].eq(self.input1[7])
+
+            with m.Case(ALU8Func.ROR):
+                carry_in = self.sr_flags[Flags.C]
+
+                m.d.comb += self.output.eq(Cat(self.input1[1:8], carry_in))
+                m.d.comb += self._sr_flags[Flags.N].eq(carry_in)
+                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                m.d.comb += self._sr_flags[Flags.C].eq(self.input1[0])
 
         return m
 

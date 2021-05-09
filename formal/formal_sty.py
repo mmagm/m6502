@@ -25,9 +25,6 @@ class Formal(Verification):
         pass
 
     def valid(self, instr: Value) -> Value:
-        # return instr.matches(0x84) # zeropage
-        # return instr.matches(0x94) # zeropage,Y
-        # return instr.matches(0x8C) # absolute
         return instr.matches(0x84,0x94,0x8C)
 
     def check(self, m: Module, instr: Value, data: FormalData):
