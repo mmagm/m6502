@@ -21,13 +21,13 @@ from .alu_verification import AluVerification
 
 class Formal(AluVerification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches("0010-100")
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        input1, input2, actual_output = self.common_check(m, instr, data)
+    def check(self, m: Module):
+        input1, input2, actual_output, size = self.common_check(m)
 
         output = input1
 
@@ -35,6 +35,5 @@ class Formal(AluVerification):
         z = flag_output == 0
         n = flag_output[7]
 
-        m.d.comb += Assert(actual_output == output)
-        self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags,
-                         Z=z, N=n)
+        self.assert_registers(m, PC=self.data.pre_pc+size)
+        self.assertFlags(m, Z=z, N=n)

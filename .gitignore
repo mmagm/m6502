@@ -4,6 +4,7 @@ core_bmc/
 core_cover/
 alu8_bmc/
 alu8_cover/
+formal/sby/
 *.gtkw
 *.vcd
 core.il

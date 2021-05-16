@@ -16,21 +16,94 @@
 
 from typing import List, Optional
 
-from nmigen import Signal, Value, Module, Cat, Array
+from nmigen import Signal, Value, Module, Cat, Array, unsigned, Mux
 from nmigen.asserts import Assert
 from nmigen.hdl.ast import Statement
+from nmigen.hdl.rec import Record, Layout
 from consts import Flags
+
+
+class CycleSignals(Record):
+    def __init__(self, name: str = None):
+        super().__init__(Layout([
+            ("address", unsigned(16)),
+            ("data_in", unsigned(8)),
+            ("data_out", unsigned(8)),
+            ("rw", unsigned(1)),
+            ("nmi", unsigned(1)),
+            ("irq", unsigned(1)),
+        ]), name=name)
 
 
 class Verification(object):
     def __init__(self):
-        pass
+        self.want_cycles = Signal(4, name="want_cycles")
+        self.want_a = Signal(8, name="want_a")
+        self.want_x = Signal(8, name="want_x")
+        self.want_y = Signal(8, name="want_y")
+        self.want_pc = Signal(16, name="want_pc")
+        self.want_sp = Signal(8, name="want_sp")
+        self.want_sr_flags = Signal(8, name="want_sr_flags")
+        self.want_signals = Array([CycleSignals(name=f"want_{i}_") for i in range(16)])
 
     def valid(self, instr: Value) -> Value:
         pass
 
-    def check(self, m: Module, instr: Value, data: 'FormalData'):
+    def check(self, m: Module):
         pass
+
+    def verify(self, m: Module, instr: Value, data: 'FormalData'):
+        self.data = data
+        self.instr = instr
+        self.check(m)
+
+    def assert_cycles(self, m: Module, cycles: int):
+        m.d.comb += self.want_cycles.eq(cycles)
+        m.d.comb += Assert(self.data.cycle == self.want_cycles)
+
+    def assert_cycle_signals(self, m: Module, cycle: int,
+                             address: Value = None, rw: int = 0) -> Value:
+
+        want = self.want_signals[cycle]
+        got = self.data.cycle_records[cycle]
+
+        m.d.comb += [
+            want.rw.eq(rw),
+            want.address.eq(address),
+            Assert(want.rw == got.rw),
+            Assert(want.address == got.address)
+        ]
+
+        return got.data_in if rw == 1 else got.data_out
+
+    def assert_registers(self, m: Module, A: Value = None, X: Value = None,
+                         Y: Value = None, SP: Value = None, PC: Value = None):
+        if A is not None:
+            m.d.comb += self.want_a.eq(A[:8])
+        else:
+            m.d.comb += self.want_a.eq(self.data.pre_a)
+        if X is not None:
+            m.d.comb += self.want_x.eq(X[:8])
+        else:
+            m.d.comb += self.want_x.eq(self.data.pre_x)
+        if Y is not None:
+            m.d.comb += self.want_y.eq(Y[:8])
+        else:
+            m.d.comb += self.want_y.eq(self.data.pre_y)
+        if SP is not None:
+            m.d.comb += self.want_sp.eq(SP[:8])
+        else:
+            m.d.comb += self.want_sp.eq(self.data.pre_sp)
+        if PC is not None:
+            m.d.comb += self.want_pc.eq(PC[:16])
+        else:
+            m.d.comb += self.want_pc.eq(self.data.pre_pc)
+
+        m.d.comb += Assert(self.data.post_a == self.want_a)
+        m.d.comb += Assert(self.data.post_x == self.want_x)
+        m.d.comb += Assert(self.data.post_y == self.want_y)
+        m.d.comb += Assert(self.data.post_sp == self.want_sp)
+        m.d.comb += Assert(self.data.post_pc == self.want_pc)
 
     def flags(self,
               prev: Value,
@@ -60,8 +133,6 @@ class Verification(object):
 
     def assertFlags(self,
                     m: Module,
-                    post_flags: Value,
-                    pre_flags: Value,
                     N: Value = None,
                     V: Value = None,
                     B: Value = None,
@@ -70,16 +141,16 @@ class Verification(object):
                     Z: Value = None,
                     C: Value = None):
         expectedFlags = Signal(8)
-        m.d.comb += expectedFlags.eq(self.flags(pre_flags, N, V, B, D, I, Z, C))
+        m.d.comb += expectedFlags.eq(self.flags(self.data.pre_sr_flags, N, V, B, D, I, Z, C))
         m.d.comb += [
-            Assert(post_flags[Flags.N] == expectedFlags[Flags.N]),
-            Assert(post_flags[Flags.V] == expectedFlags[Flags.V]),
-            Assert(post_flags[Flags._] == expectedFlags[Flags._]),
-            Assert(post_flags[Flags.B] == expectedFlags[Flags.B]),
-            Assert(post_flags[Flags.D] == expectedFlags[Flags.D]),
-            Assert(post_flags[Flags.I] == expectedFlags[Flags.I]),
-            Assert(post_flags[Flags.Z] == expectedFlags[Flags.Z]),
-            Assert(post_flags[Flags.C] == expectedFlags[Flags.C]),
+            Assert(self.data.post_sr_flags[Flags.N] == expectedFlags[Flags.N]),
+            Assert(self.data.post_sr_flags[Flags.V] == expectedFlags[Flags.V]),
+            Assert(self.data.post_sr_flags[Flags._] == expectedFlags[Flags._]),
+            Assert(self.data.post_sr_flags[Flags.B] == expectedFlags[Flags.B]),
+            Assert(self.data.post_sr_flags[Flags.D] == expectedFlags[Flags.D]),
+            Assert(self.data.post_sr_flags[Flags.I] == expectedFlags[Flags.I]),
+            Assert(self.data.post_sr_flags[Flags.Z] == expectedFlags[Flags.Z]),
+            Assert(self.data.post_sr_flags[Flags.C] == expectedFlags[Flags.C]),
         ]
 
 
@@ -107,75 +178,48 @@ class FormalData(object):
         self.post_sp = Signal(8)
         self.post_pc = Signal(16)
 
-        self.addresses_written = Signal(3)
-        self.write_addr = Array([Signal(16) for _ in range(8)])
-        self.write_data = Array([Signal(8) for _ in range(8)])
+        self.max_cycles = 16
 
-        self.addresses_read = Signal(3)
-        self.read_addr = Array([Signal(16) for _ in range(8)])
-        self.read_data = Array([Signal(8) for _ in range(8)])
+        self.cycle = Signal(range(self.max_cycles), name="record_cycle")
+        self.cycle_records = Array([CycleSignals(name=f"record{i}")
+                                    for i in range(self.max_cycles)])
 
-        for i in range(8):
-            self.read_addr[i].attrs["keep"] = True
-            self.read_addr[i].name = f"read_addr{i}"
-            self.write_addr[i].attrs["keep"] = True
-            self.write_addr[i].name = f"write_addr{i}"
+    def snapshot_signals(self, m: Module, addr: Value, din: Value, dout: Value,
+                         rw: Value, irq: Value, nmi: Value) -> List[Statement]:
+        s = self.cycle_records[self.cycle]
 
-        for i in range(8):
-            self.read_data[i].attrs["keep"] = True
-            self.read_data[i].name = f"read_data{i}"
-            self.write_data[i].attrs["keep"] = True
-            self.write_data[i].name = f"write_data{i}"
+        return [
+            s.address.eq(addr),
+            s.data_in.eq(din),
+            s.data_out.eq(dout),
+            s.rw.eq(rw),
+            s.irq.eq(irq),
+            s.nmi.eq(nmi),
+            self.cycle.eq(self.cycle + 1),
+        ]
 
-    def plus16(self, v1: Value, v2: Value) -> Value:
-        return (v1 + v2)[:16]
+    def preSnapshot(self, m: Module, instr: Value, sr_flags: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value) -> List[Statement]:
+        return [
+            self.snapshot_taken.eq(1),
+            self.instr.eq(instr),
+            self.pre_sr_flags.eq(sr_flags),
+            self.pre_a.eq(a),
+            self.pre_x.eq(x),
+            self.pre_y.eq(y),
+            self.pre_sp.eq(sp),
+            self.pre_pc.eq(pc),
+            self.cycle.eq(1)
+        ]
 
-    def plus8(self, v1: Value, v2: Value) -> Value:
-        return (v1 + v2)[:8]
+    def noSnapshot(self, m: Module) -> Statement:
+        return self.snapshot_taken.eq(0)
 
-    def read(self, m: Module, addr: Value, data: Value):
-        if self.verification is None:
-            return
-        with m.If(self.snapshot_taken):
-            with m.If(self.addresses_read != 7):
-                m.d.ph1 += self.addresses_read.eq(self.addresses_read + 1)
-                m.d.ph1 += self.read_addr[self.addresses_read].eq(addr)
-                m.d.ph1 += self.read_data[self.addresses_read].eq(data)
-
-    def write(self, m: Module, addr: Value, data: Value):
-        if self.verification is None:
-            return
-        with m.If(self.snapshot_taken):
-            with m.If(self.addresses_read != 7):
-                m.d.ph1 += self.addresses_written.eq(self.addresses_written + 1)
-                m.d.ph1 += self.write_addr[self.addresses_written].eq(addr)
-                m.d.ph1 += self.write_data[self.addresses_written].eq(data)
-
-    def preSnapshot(self, m: Module, instr: Value, sr_flags: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value):
-        if self.verification is None:
-            return
-        m.d.ph1 += self.snapshot_taken.eq(1)
-        m.d.ph1 += self.addresses_read.eq(0)
-        m.d.ph1 += self.addresses_written.eq(0)
-        m.d.ph1 += self.instr.eq(instr)
-        m.d.ph1 += self.pre_sr_flags.eq(sr_flags)
-        m.d.ph1 += self.pre_a.eq(a)
-        m.d.ph1 += self.pre_x.eq(x)
-        m.d.ph1 += self.pre_y.eq(y)
-        m.d.ph1 += self.pre_sp.eq(sp)
-        m.d.ph1 += self.pre_pc.eq(pc)
-
-    def noSnapshot(self, m: Module):
-        if self.verification is None:
-            return
-        m.d.ph1 += self.snapshot_taken.eq(0)
-
-    def postSnapshot(self, m: Module, sr_flags: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value):
-        if self.verification is None:
-            return
-        m.d.comb += self.post_sr_flags.eq(sr_flags)
-        m.d.comb += self.post_a.eq(a)
-        m.d.comb += self.post_x.eq(x)
-        m.d.comb += self.post_y.eq(y)
-        m.d.comb += self.post_sp.eq(sp)
-        m.d.comb += self.post_pc.eq(pc)
+    def postSnapshot(self, m: Module, sr_flags: Value, a: Value, x: Value, y: Value, sp: Value, pc: Value) -> List[Statement]:
+        return [
+            self.post_sr_flags.eq(sr_flags),
+            self.post_a.eq(a),
+            self.post_x.eq(x),
+            self.post_y.eq(y),
+            self.post_sp.eq(sp),
+            self.post_pc.eq(pc)
+        ]

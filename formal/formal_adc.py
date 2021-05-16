@@ -23,13 +23,13 @@ from .alu_verification import AluVerification
 
 class Formal(AluVerification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches("011---01")
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        input1, input2, actual_output = self.common_check(m, instr, data)
+    def check(self, m: Module):
+        input1, input2, actual_output, size = self.common_check(m)
 
         carry_in = Signal()
         sum9 = Signal(9)
@@ -40,12 +40,12 @@ class Formal(AluVerification):
         z = (sum9[:8] == 0)
         v = (sum8[7] ^ c)
 
-        m.d.comb += carry_in.eq(data.pre_sr_flags[Flags.C])
+        m.d.comb += carry_in.eq(self.data.pre_sr_flags[Flags.C])
 
         m.d.comb += [
             sum9.eq(input1 + input2 + carry_in),
-            sum8.eq(input1[:7] + input2[:7] + carry_in),
-            Assert(actual_output == sum9[:8]),
+            sum8.eq(input1[:7] + input2[:7] + carry_in)
         ]
-        self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags,
-                         Z=z, N=n, V=v, C=c)
+
+        self.assert_registers(m, A=sum9, PC=self.data.pre_pc+size)
+        self.assertFlags(m, Z=z, N=n, V=v, C=c)

@@ -22,13 +22,13 @@ from .alu_verification import AluVerification
 
 class Formal(AluVerification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches("110---01")
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        input1, input2, actual_output = self.common_check(m, instr, data)
+    def check(self, m: Module):
+        input1, input2, actual_output, size = self.common_check(m)
 
         sinput1 = Signal(signed(8))
         sinput2 = Signal(signed(8))
@@ -39,5 +39,6 @@ class Formal(AluVerification):
         n = (input1 - input2)[7]
         c = (input1 < input2)
 
-        self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags,
-                         Z=z, N=n, C=c)
+        self.assert_registers(m, PC=self.data.pre_pc+size)
+
+        self.assertFlags(m, Z=z, N=n, C=c)
