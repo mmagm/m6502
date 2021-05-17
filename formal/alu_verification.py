@@ -89,7 +89,7 @@ class AluVerification(Verification):
             zp = self.assert_cycle_signals(
                 m, 1, address=self.data.pre_pc+1, rw=1)
             value = self.assert_cycle_signals(
-                m, 3, address=Cat(zp + self.data.pre_x, 0x00), rw=1)
+                m, 3, address=Cat((zp + self.data.pre_x)[:8], 0x00), rw=1)
             m.d.comb += input2.eq(value)
             m.d.comb += size.eq(2)
 
@@ -164,95 +164,79 @@ class AluVerification(Verification):
 
 class Alu2Verification(Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
-    def common_check(self, m: Module, instr: Value, data: FormalData) -> Tuple[Value, Value, Value]:
-        mode = instr[2:5]
+    def common_check(self, m: Module) -> Tuple[Value, Value, Value]:
+        mode = self.instr[2:5]
         input = Signal(8)
         actual_output = Signal(8)
         size = Signal(3)
 
-        m.d.comb += [
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp)
-        ]
+        # m.d.comb += Assume(self.data.pre_x > 0)
 
         with m.If(mode == AddressModes.IMMEDIATE.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 1)),
-                Assert(data.addresses_read == 1),
-                Assert(data.addresses_written == 0),
-                input.eq(data.pre_a)
-            ]
-
-            m.d.comb += actual_output.eq(data.post_a)
+            self.assert_cycles(m, 2)
+            m.d.comb += actual_output.eq(self.data.post_a)
+            self.assert_registers(m, A=actual_output, PC=self.data.pre_pc+size)
+            m.d.comb += input.eq(self.data.pre_a)
+            m.d.comb += size.eq(1)
 
         with m.Elif(mode == AddressModes.ZEROPAGE.value):
-            m.d.comb += [
-                Assert(data.post_a == data.pre_a),
-                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
-                Assert(data.addresses_read == 2),
-                Assert(data.read_addr[1] == Cat(data.read_data[0], 0x00)),
-                input.eq(data.read_data[1])
-            ]
-
-            m.d.comb += [
-                Assert(data.addresses_written == 2),
-                Assert(data.write_addr[0] == data.read_addr[1]),
-                actual_output.eq(data.write_data[1])
-            ]
+            self.assert_cycles(m, 5)
+            zp = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            value = self.assert_cycle_signals(
+                m, 2, address=zp, rw=1)
+            self.assert_cycle_signals(m, 3, address=zp, rw=0)
+            data = self.assert_cycle_signals(m, 4, address=zp, rw=0)
+            m.d.comb += actual_output.eq(data)
+            m.d.comb += input.eq(value)
+            m.d.comb += size.eq(2)
 
         with m.Elif(mode == AddressModes.ZEROPAGE_IND.value):
-            m.d.comb += [
-                Assert(data.post_a == data.pre_a),
-                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
-                Assert(data.addresses_read == 2),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_x, data.read_data[0])),
-                input.eq(data.read_data[0])
-            ]
-
-            m.d.comb += [
-                Assert(data.addresses_written == 2),
-                Assert(data.write_addr[0] == data.read_addr[1]),
-                actual_output.eq(data.write_data[0])
-            ]
+            self.assert_cycles(m, 6)
+            zp = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            self.assert_cycle_signals(
+                m, 2, address=zp, rw=1)
+            zp_ind = Cat((zp + self.data.pre_x)[:8], 0x00)
+            value = self.assert_cycle_signals(
+                m, 3, address=zp_ind, rw=1)
+            self.assert_cycle_signals(
+                m, 4, address=zp_ind, rw=0)
+            data = self.assert_cycle_signals(
+                m, 5, address=zp_ind, rw=0)
+            m.d.comb += actual_output.eq(data)
+            m.d.comb += input.eq(value)
+            m.d.comb += size.eq(2)
 
         with m.Elif(mode == AddressModes.ABSOLUTE.value):
-            m.d.comb += [
-                Assert(data.post_a == data.pre_a),
-                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-                Assert(data.addresses_read == 3),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-                Assert(data.read_addr[2] == Cat(data.read_data[0], data.read_data[1])),
-                input.eq(data.read_data[2]),
-            ]
-
-            m.d.comb += [
-                Assert(data.addresses_written == 2),
-                Assert(data.write_addr[0] == data.read_addr[2]),
-                Assert(data.write_addr[1] == data.read_addr[2]),
-                actual_output.eq(data.write_data[1])
-            ]
+            self.assert_cycles(m, 6)
+            addr_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+            value = self.assert_cycle_signals(
+                m, 3, address=Cat(addr_lo, addr_hi), rw=1)
+            self.assert_cycle_signals(m, 4, address=Cat(addr_lo, addr_hi), rw=1)
+            data = self.assert_cycle_signals(m, 5, address=Cat(addr_lo, addr_hi), rw=0)
+            m.d.comb += actual_output.eq(data)
+            m.d.comb += input.eq(value)
+            m.d.comb += size.eq(3)
 
         with m.Elif(mode == AddressModes.ABSOLUTE_X.value):
-            m.d.comb += [
-                Assert(data.post_a == data.pre_a),
-                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-                Assert(data.addresses_read == 5),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-                Assert(data.read_addr[3] == data.plus16(Cat(data.read_data[0], data.read_data[1]), data.pre_x)),
-                input.eq(data.read_data[2]),
-            ]
+            self.assert_cycles(m, 7)
+            addr_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+            addr_abs = Cat((addr_lo + self.data.pre_x)[:8], addr_hi)
+            value = self.assert_cycle_signals(
+                m, 4, address=addr_abs, rw=1)
+            self.assert_cycle_signals(m, 5, address=addr_abs, rw=0)
+            data = self.assert_cycle_signals(m, 6, address=addr_abs, rw=0)
+            m.d.comb += actual_output.eq(data)
+            m.d.comb += input.eq(value)
+            m.d.comb += size.eq(3)
 
-            m.d.comb += [
-                Assert(data.addresses_written == 2),
-                Assert(data.write_addr[0] == data.read_addr[3]),
-                Assert(data.write_addr[1] == data.read_addr[3]),
-                actual_output.eq(data.write_data[1])
-            ]
-
-        return (input, actual_output)
+        return (input, actual_output, size)

@@ -41,7 +41,7 @@ ROR = "011---10"
 
 class Formal(Alu2Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches(
@@ -51,37 +51,42 @@ class Formal(Alu2Verification):
             0x6A, 0x66, 0x76, 0x6E, 0x7E
         )
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        input, actual_output = self.common_check(m, instr, data)
+    def check(self, m: Module):
+        input, actual_output, size = self.common_check(m)
         expected_output = Signal(8)
-
-        pre_c = data.pre_sr_flags[Flags.C]
+        pre_c = self.data.pre_sr_flags[Flags.C]
         c = Signal()
 
-        with m.If(instr.matches(ASL)):
+        with m.If(self.instr.matches(ASL)):
             m.d.comb += [
                 c.eq(input[7]),
                 expected_output[0].eq(0),
                 Downto(expected_output, 7, 1).eq(Downto(input, 6, 0))
             ]
 
-        with m.Elif(instr.matches(ROL)):
+        with m.Elif(self.instr.matches(ROL)):
             m.d.comb += [
                 c.eq(input[7]),
                 expected_output[0].eq(pre_c),
                 Downto(expected_output, 7, 1).eq(Downto(input, 6, 0))
             ]
 
-        with m.Elif(instr.matches(LSR)):
+        with m.Elif(self.instr.matches(LSR)):
             m.d.comb += [
                 c.eq(input[0]),
-                expected_output[7].eq(input[7]),
+                expected_output[7].eq(0),
                 Downto(expected_output, 6, 0).eq(Downto(input, 7, 1))
             ]
 
-        with m.Elif(instr.matches(ROR)):
+        with m.Elif(self.instr.matches(ROR)):
             m.d.comb += [
                 c.eq(input[0]),
                 expected_output[7].eq(pre_c),
                 Downto(expected_output, 6, 0).eq(Downto(input, 7, 1)),
             ]
+
+        m.d.comb += Assert(expected_output == actual_output)
+        n = expected_output[7]
+        z = (expected_output == 0)
+
+        self.assertFlags(m, Z=z, N=n, C=c)

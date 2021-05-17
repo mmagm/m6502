@@ -19,7 +19,7 @@ from enum import IntEnum
 from typing import List, Dict, Tuple, Optional
 import importlib
 
-from nmigen import Const, Signal, Elaboratable, Module, Cat, Mux
+from nmigen import Const, Signal, Elaboratable, Module, Cat, Mux, unsigned
 from nmigen import ClockDomain, ClockSignal # , ResetSignal
 from nmigen.build import Platform
 from nmigen.hdl.ast import Statement
@@ -258,9 +258,9 @@ class Core(Elaboratable):
             #     self.LDX(m)
             # with m.Case(0xA0,0xA4,0xB4,0xAC,0xBC):
             #     self.LDY(m)
-            with m.Case(0xE6,0xEE,0xF6,0xFE):
+            with m.Case(0xE6, 0xEE, 0xF6, 0xFE):
                 self.ALU2(m, func=ALU8Func.INC)
-            with m.Case(0xC6,0xCE,0xD6,0xDE):
+            with m.Case(0xC6, 0xCE, 0xD6, 0xDE):
                 self.ALU2(m, func=ALU8Func.DEC)
             with m.Case(0x0A, 0x06, 0x16, 0x0E, 0x1E):
                 self.ALU2(m, func=ALU8Func.ASL)
@@ -639,7 +639,7 @@ class Core(Elaboratable):
         with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
             self.mode_zeropage(m)
 
-            self.read_byte(m, cycle=2, addr=Cat(self.tmp16l + self.x, self.tmp16h), comb_dest=self.src8_2)
+            self.read_byte(m, cycle=2, addr=Cat(self.tmp8 + self.x, Const(0, unsigned(8))), comb_dest=self.src8_2)
 
             with m.If(self.cycle == 3):
                 m.d.comb += self.src8_1.eq(self.a)
@@ -744,10 +744,8 @@ class Core(Elaboratable):
     def ALU2(self, m: Module, func: ALU8Func):
         # implied accumulator mode
         with m.If(self.mode_b == AddressModes.IMMEDIATE.value):
-            operand = self.mode_immediate(m)
-
             with m.If(self.cycle == 1):
-                m.d.comb += self.src8_1.eq(operand)
+                m.d.comb += self.src8_1.eq(self.a)
                 m.d.comb += self.src8_2.eq(0)
                 m.d.comb += self.alu8_func.eq(func)
                 m.d.ph1 += self.a.eq(self.alu8)
@@ -760,10 +758,10 @@ class Core(Elaboratable):
             self.read_byte(m, cycle=1, addr=operand, comb_dest=self.src8_1)
 
             with m.If(self.cycle == 2):
+                m.d.ph1 += self.tmp8.eq(self.src8_1)
                 m.d.ph1 += self.RW.eq(0)
                 m.d.ph1 += self.Addr.eq(operand)
                 m.d.ph1 += self.Dout.eq(self.src8_1)
-                m.d.ph1 += self.tmp8.eq(self.src8_1)
 
             with m.If(self.cycle == 3):
                 m.d.comb += self.src8_1.eq(self.tmp8)
@@ -771,23 +769,32 @@ class Core(Elaboratable):
                 m.d.comb += self.alu8_func.eq(func)
 
                 m.d.ph1 += self.RW.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
                 m.d.ph1 += self.Dout.eq(self.alu8)
 
             with m.If(self.cycle == 4):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
-            operand = self.mode_zeropage_indexed(m, index=self.x)
+            zp_ind = (self.tmp16l + self.x)[:8]
 
-            self.read_byte(m, cycle=1, addr=operand, comb_dest=self.src8_1)
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.tmp16l.eq(self.Din)
+                m.d.ph1 += self.tmp16h.eq(0)
+                m.d.ph1 += self.adl.eq(self.Din)
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 2):
-                m.d.ph1 += self.tmp8.eq(self.src8_1)
+                m.d.ph1 += self.tmp16l.eq(zp_ind)
+                m.d.ph1 += self.adl.eq(zp_ind)
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 3):
+                m.d.ph1 += self.tmp8.eq(self.Din)
                 m.d.ph1 += self.RW.eq(0)
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.tmp8)
+                m.d.ph1 += self.Addr.eq(self.tmp16)
 
             with m.If(self.cycle == 4):
                 m.d.comb += self.src8_1.eq(self.tmp8)
@@ -811,63 +818,63 @@ class Core(Elaboratable):
             with m.If(self.cycle == 3):
                 m.d.ph1 += self.tmp8.eq(self.Din)
 
-                m.d.ph1 += self.RW.eq(0)
+                m.d.ph1 += self.RW.eq(1)
                 m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.tmp8)
+                m.d.ph1 += self.Dout.eq(self.Din)
 
             with m.If(self.cycle == 4):
-                m.d.ph1 += self.RW.eq(0)
-                m.d.ph1 += self.Addr.eq(operand)
-
                 m.d.comb += self.src8_1.eq(self.tmp8)
                 m.d.comb += self.src8_2.eq(0)
                 m.d.comb += self.alu8_func.eq(func)
 
+                m.d.ph1 += self.RW.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
                 m.d.ph1 += self.Dout.eq(self.alu8)
 
             with m.If(self.cycle == 5):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_X.value):
-            operand = self.mode_absolute(m)
-
-            sum9 = self.tmp16l + self.x
+            sum9 = Signal(9)
             overflow = Signal()
+            m.d.comb += sum9.eq(self.tmp16l + self.x)
+            m.d.comb += overflow.eq(sum9[8])
+
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.tmp16l.eq(self.Din)
+                m.d.ph1 += self.pc.eq(self.pc + 1)
+                m.d.ph1 += self.Addr.eq(self.pc + 1)
+                m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 2):
+                m.d.ph1 += self.pc.eq(self.pc + 1)
                 m.d.ph1 += self.tmp16l.eq(sum9[:8])
-                m.d.ph1 += overflow.eq(sum9[8])
-
+                m.d.ph1 += self.tmp16h.eq(self.Din + overflow)
                 m.d.ph1 += self.Addr.eq(Cat(sum9[:8], self.tmp16h))
                 m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 3):
-                m.d.ph1 += self.tmp16h.eq(self.tmp16h + overflow)
-                m.d.ph1 += self.Addr.eq(operand)
+                # re-read from corrected address
+                m.d.ph1 += self.Addr.eq(self.tmp16)
                 m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 4):
-                # re-read from fixed address
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
+                m.d.ph1 += self.tmp8.eq(self.Din)
 
-            with m.If(self.cycle == 5):
                 m.d.ph1 += self.RW.eq(0)
                 m.d.ph1 += self.Addr.eq(operand)
                 m.d.ph1 += self.Dout.eq(self.Din)
 
-                m.d.comb += self.src8_1.eq(self.Din)
+            with m.If(self.cycle == 5):
+                m.d.comb += self.src8_1.eq(self.tmp8)
                 m.d.comb += self.src8_2.eq(0)
                 m.d.comb += self.alu8_func.eq(func)
 
-                m.d.ph1 += self.tmp8.eq(self.alu8)
-
-            with m.If(self.cycle == 6):
                 m.d.ph1 += self.RW.eq(0)
                 m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.tmp8)
+                m.d.ph1 += self.Dout.eq(self.alu8)
 
-            with m.If(self.cycle == 7):
+            with m.If(self.cycle == 6):
                 self.end_instr(m, self.pc)
 
     def mode_indirect_x(self, m: Module) -> Statement:

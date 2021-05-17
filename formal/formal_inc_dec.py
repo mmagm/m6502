@@ -27,7 +27,7 @@ DEC = "110---10"
 
 class Formal(Alu2Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches(
@@ -35,23 +35,18 @@ class Formal(Alu2Verification):
             0xC6,0xCE,0xD6,0xDE
         )
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        input, actual_output = self.common_check(m, instr, data)
+    def check(self, m: Module):
+        input, actual_output, size = self.common_check(m)
         expected_output = Signal(8)
 
         n = expected_output[7]
         z = (expected_output == 0)
 
-        with m.If(instr.matches(INC)):
-            m.d.comb += [
-                expected_output.eq(input + 1),
-                Assert(actual_output == expected_output)
-            ]
+        with m.If(self.instr.matches(INC)):
+            m.d.comb += expected_output.eq(input + 1)
+        with m.Elif(self.instr.matches(DEC)):
+            m.d.comb += expected_output.eq(input - 1)
 
-        with m.Elif(instr.matches(DEC)):
-            m.d.comb += [
-                expected_output.eq(input - 1),
-                Assert(actual_output == expected_output)
-            ]
+        m.d.comb += Assert(expected_output == actual_output)
 
-        self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags, N=n, Z=z)
+        self.assertFlags(m, Z=z, N=n)
