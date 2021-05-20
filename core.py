@@ -249,11 +249,11 @@ class Core(Elaboratable):
             with m.Case("---10000"):
                 self.BR(m)
             with m.Case(0x85, 0x95, 0x8D, 0x9D, 0x99, 0x81, 0x91):
-                self.STA(m)
+                self.ST(m) # STA
             with m.Case(0x86, 0x96, 0x8E):
-                self.STX(m)
+                self.ST(m) # STX
             with m.Case(0x84, 0x94, 0x8C):
-                self.STY(m)
+                self.ST(m) # STY
             # with m.Case(0xA2,0xA6,0xB6,0xAE,0xBE):
             #     self.LDX(m)
             # with m.Case(0xA0,0xA4,0xB4,0xAC,0xBC):
@@ -334,35 +334,49 @@ class Core(Elaboratable):
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
 
-    def STX(self, m: Module):
+    def ST(self, m: Module):
+        index = Signal(8)
+        zp_ind = Signal(8)
+
+        with m.Switch(self.mode_c):
+            with m.Case("01"):
+                m.d.comb += index.eq(self.a)
+                m.d.comb += zp_ind.eq(self.x)
+            with m.Case("10"):
+                m.d.comb += index.eq(self.x)
+                m.d.comb += zp_ind.eq(self.y)
+            with m.Case("00"):
+                m.d.comb += index.eq(self.y)
+                m.d.comb += zp_ind.eq(self.x)
+            with m.Default():
+                m.d.comb += index.eq(self.a)
+                m.d.comb += zp_ind.eq(self.x)
+
         with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
             operand = self.mode_zeropage(m)
 
             with m.If(self.cycle == 1):
                 m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.x)
+                m.d.ph1 += self.Dout.eq(index)
                 m.d.ph1 += self.RW.eq(0)
 
-            with m.If(self.cycle == 3):
+            with m.If(self.cycle == 2):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
-            operand = self.mode_zeropage_indexed(m, index=self.y)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.tmp8.eq(self.Din)
+                m.d.ph1 += self.pc.eq(self.pc + 1)
+                m.d.ph1 += self.Addr.eq(self.Din)
                 m.d.ph1 += self.RW.eq(1)
 
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.y)
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.adl.eq(self.tmp8 + zp_ind)
+                m.d.ph1 += self.adh.eq(0)
                 m.d.ph1 += self.RW.eq(0)
+                m.d.ph1 += self.Dout.eq(index)
 
-            with m.If(self.cycle == 4):
+            with m.If(self.cycle == 3):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
@@ -370,180 +384,96 @@ class Core(Elaboratable):
 
             with m.If(self.cycle == 2):
                 m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.x)
-                m.d.ph1 += self.RW.eq(0)
-
-            with m.If(self.cycle == 4):
-                self.end_instr(m, self.pc)
-
-    def STY(self, m: Module):
-        with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
-            operand = self.mode_zeropage(m)
-
-            with m.If(self.cycle == 1):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.y)
+                m.d.ph1 += self.Dout.eq(index)
                 m.d.ph1 += self.RW.eq(0)
 
             with m.If(self.cycle == 3):
-                self.end_instr(m, self.pc)
-
-        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
-            operand = self.mode_zeropage_indexed(m, index=self.x)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.y)
-                m.d.ph1 += self.RW.eq(0)
-
-            with m.If(self.cycle == 4):
-                self.end_instr(m, self.pc)
-
-        with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
-            operand = self.mode_absolute(m)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.y)
-                m.d.ph1 += self.RW.eq(0)
-
-            with m.If(self.cycle == 4):
-                self.end_instr(m, self.pc)
-
-    def STA(self, m: Module):
-        with m.If(self.mode_b == AddressModes.ZEROPAGE.value):
-            operand = self.mode_zeropage(m)
-
-            with m.If(self.cycle == 1):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.a)
-                m.d.ph1 += self.RW.eq(0)
-
-            with m.If(self.cycle == 3):
-                self.end_instr(m, self.pc)
-
-        with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
-            operand = self.mode_zeropage_indexed(m, index=self.x)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.a)
-                m.d.ph1 += self.RW.eq(0)
-
-            with m.If(self.cycle == 4):
-                self.end_instr(m, self.pc)
-
-        with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
-            operand = self.mode_absolute(m)
-
-            with m.If(self.cycle == 2):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.Addr.eq(operand)
-                m.d.ph1 += self.Dout.eq(self.a)
-                m.d.ph1 += self.RW.eq(0)
-
-            with m.If(self.cycle == 4):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_X.value):
             operand = self.mode_absolute(m)
 
-            sum9 = self.tmp16l + self.x
+            sum9 = Signal(9)
+
+            m.d.comb += sum9.eq(self.tmp16l + self.x)
 
             with m.If(self.cycle == 2):
-                m.d.ph1 += self.tmp16l.eq(sum9[:8])
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.tmp16h.eq(self.tmp16h + sum9[8])
-                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.adl.eq(sum9[:8])
+                m.d.ph1 += self.adh.eq(self.Din) # high byte
                 m.d.ph1 += self.RW.eq(1)
 
-            with m.If(self.cycle == 4):
-                m.d.ph1 += self.Addr.eq(operand)
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.adl.eq(sum9[:8])
+                m.d.ph1 += self.adh.eq(self.tmp16h + sum9[8])
                 m.d.ph1 += self.Dout.eq(self.a)
                 m.d.ph1 += self.RW.eq(0)
 
-            with m.If(self.cycle == 5):
+            with m.If(self.cycle == 4):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_Y.value):
             operand = self.mode_absolute(m)
 
-            sum9 = self.tmp16l + self.y
+            sum9 = Signal(9)
+
+            m.d.comb += sum9.eq(self.tmp16l + self.y)
 
             with m.If(self.cycle == 2):
-                m.d.ph1 += self.tmp16l.eq(sum9[:8])
-
-            with m.If(self.cycle == 3):
-                m.d.ph1 += self.tmp16h.eq(self.tmp16h + sum9[8])
-                m.d.ph1 += self.Addr.eq(operand)
+                m.d.ph1 += self.adl.eq(sum9[:8])
+                m.d.ph1 += self.adh.eq(self.Din) # high byte
                 m.d.ph1 += self.RW.eq(1)
 
-            with m.If(self.cycle == 4):
-                m.d.ph1 += self.Addr.eq(operand)
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.adl.eq(sum9[:8])
+                m.d.ph1 += self.adh.eq(self.tmp16h + sum9[8])
                 m.d.ph1 += self.Dout.eq(self.a)
                 m.d.ph1 += self.RW.eq(0)
 
-            with m.If(self.cycle == 5):
+            with m.If(self.cycle == 4):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.INDIRECT_X.value):
-            operand = self.mode_indirect_x(m)
+            operand, value = self.mode_indirect_x(m)
 
             with m.If(self.cycle == 4):
-                m.d.ph1 += self.adl.eq(operand)
-                m.d.ph1 += self.adh.eq(0)
-                m.d.ph1 += self.RW.eq(1)
-
-            with m.If(self.cycle == 5):
-                m.d.ph1 += self.adl.eq(operand)
-                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.Addr.eq(operand)
                 m.d.ph1 += self.Dout.eq(self.a)
                 m.d.ph1 += self.RW.eq(0)
 
-            with m.If(self.cycle == 6):
+            with m.If(self.cycle == 5):
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.INDIRECT_Y.value):
-            operand = self.mode_indirect_y(m, write=True)
+            addr_ind = self.tmp16l + self.y
 
-            with m.If(self.cycle == 4):
-                m.d.ph1 += self.Addr.eq(operand)
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.tmp8.eq(self.Din)
+                m.d.ph1 += self.pc.eq(self.pc + 1)
+
+                m.d.ph1 += self.adl.eq(self.Din)
+                m.d.ph1 += self.adh.eq(0)
                 m.d.ph1 += self.RW.eq(1)
 
-            with m.If(self.cycle == 5):
-                m.d.ph1 += self.Addr.eq(operand)
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.tmp16l.eq(self.Din)
+                m.d.ph1 += self.adl.eq(self.tmp8 + 1)
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 3):
+                m.d.ph1 += self.tmp16h.eq(self.Din)
+
+                m.d.ph1 += self.adl.eq(addr_ind)
+                m.d.ph1 += self.adh.eq(self.Din)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 4):
+                m.d.ph1 += self.adl.eq(addr_ind)
+                m.d.ph1 += self.adh.eq(self.tmp16h + addr_ind[8])
                 m.d.ph1 += self.Dout.eq(self.a)
                 m.d.ph1 += self.RW.eq(0)
 
-            with m.If(self.cycle == 6):
+            with m.If(self.cycle == 5):
                 self.end_instr(m, self.pc)
 
     def JMP(self, m: Module):
@@ -564,7 +494,7 @@ class Core(Elaboratable):
 
     def ALU(self, m: Module, func: ALU8Func, store: bool = True):
         with m.If(self.mode_b == AddressModes.INDIRECT_X.value):
-            value = self.mode_indirect_x(m)
+            operand, value = self.mode_indirect_x(m)
 
             with m.If(self.cycle == 5):
                 m.d.comb += self.src8_1.eq(self.a)
@@ -637,12 +567,23 @@ class Core(Elaboratable):
                     m.d.ph1 += self.a.eq(self.alu8)
 
         with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
-            self.mode_zeropage(m)
 
-            self.read_byte(m, cycle=2, addr=Cat(self.tmp8 + self.x, Const(0, unsigned(8))), comb_dest=self.src8_2)
+            with m.If(self.cycle == 1):
+                m.d.ph1 += self.pc.eq(self.pc + 1)
+
+                m.d.ph1 += self.tmp8.eq(self.Din) # zp
+                m.d.ph1 += self.adl.eq(self.Din)
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.RW.eq(1)
+
+            with m.If(self.cycle == 2):
+                m.d.ph1 += self.adl.eq(self.tmp8 + self.x) # zp + X
+                m.d.ph1 += self.adh.eq(0)
+                m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 3):
                 m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.src8_2.eq(self.Din)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
@@ -877,16 +818,20 @@ class Core(Elaboratable):
             with m.If(self.cycle == 6):
                 self.end_instr(m, self.pc)
 
-    def mode_indirect_x(self, m: Module) -> Statement:
+    def mode_indirect_x(self, m: Module) -> List[Statement]:
         """Generates logic to get 8-bit operand for indexed indirect addressing instructions.
         """
         value = Mux(self.cycle == 4, self.Din, self.tmp8)
+        operand = self.tmp16
+
+        addr_ind = self.Din + self.x
 
         with m.If(self.cycle == 1):
             # fetch pointer
-            m.d.ph1 += self.tmp8.eq(self.Din + self.x)
+            m.d.ph1 += self.tmp8.eq(addr_ind)
             m.d.ph1 += self.pc.eq(self.pc + 1)
-            m.d.ph1 += self.Addr.eq(self.Din + self.x)
+            m.d.ph1 += self.adh.eq(0)
+            m.d.ph1 += self.adl.eq(addr_ind)
             m.d.ph1 += self.RW.eq(1)
 
         with m.If(self.cycle == 2):
@@ -907,7 +852,7 @@ class Core(Elaboratable):
             # read value
             m.d.ph1 += self.tmp8.eq(self.Din)
 
-        return value
+        return [operand, value]
 
     def mode_immediate(self, m: Module) -> Statement:
         """Generates logic to get the 8-bit operand for immediate mode instructions.
@@ -981,9 +926,9 @@ class Core(Elaboratable):
 
     def mode_indirect_y(self, m: Module, write: bool = False) -> Statement:
         sum9  = Signal(9)
-        sum8 = sum9[:8]
         overflow = Signal()
 
+        m.d.comb += sum9.eq(self.tmp16l + self.y)
         m.d.comb += overflow.eq(sum9[8])
 
         operand = self.Din
@@ -1006,11 +951,9 @@ class Core(Elaboratable):
         # fetch address high
         with m.If(self.cycle == 3):
             m.d.ph1 += self.tmp16h.eq(self.Din)
-            m.d.ph1 += sum9.eq(self.tmp16l + self.y)
-            m.d.ph1 += self.tmp16l.eq(self.tmp16l + self.y)
 
             # read from effective address (maybe incorrect)
-            m.d.ph1 += self.adl.eq(self.tmp16l + self.y)
+            m.d.ph1 += self.adl.eq(sum9[:8])
             m.d.ph1 += self.adh.eq(self.Din)
             m.d.ph1 += self.RW.eq(1)
 
@@ -1023,11 +966,6 @@ class Core(Elaboratable):
 
             with m.Else():
                 self.end_instr(m, self.pc)
-
-        # read from effective address unless page boundery crossed
-        # or correcting address
-        with m.If(self.cycle == 5):
-            self.end_instr(m, self.pc)
 
         return operand
 

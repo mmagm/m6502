@@ -172,8 +172,6 @@ class Alu2Verification(Verification):
         actual_output = Signal(8)
         size = Signal(3)
 
-        # m.d.comb += Assume(self.data.pre_x > 0)
-
         with m.If(mode == AddressModes.IMMEDIATE.value):
             self.assert_cycles(m, 2)
             m.d.comb += actual_output.eq(self.data.post_a)

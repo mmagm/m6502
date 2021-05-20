@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from nmigen import Signal, Value, Cat, Module, Mux
+from nmigen import Signal, Value, Cat, Module, Mux, Const, unsigned
 from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert, Assume
 from .verification import FormalData, Verification
@@ -22,106 +22,108 @@ from consts import AddressModes
 
 class Formal(Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches(0x85, 0x95, 0x8D, 0x9D, 0x99, 0x81, 0x91)
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        written_data = data.pre_a
-
-        mode = instr[2:5]
-
-        m.d.comb += [
-            Assert(data.post_sr_flags == data.pre_sr_flags),
-            Assert(data.post_a == data.pre_a),
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-        ]
+    def check(self, m: Module):
+        mode = self.instr[2:5]
 
         with m.If(mode == AddressModes.ZEROPAGE.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
-                Assert(data.addresses_read == 1),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == data.read_data[0]),
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 3)
+            zp = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            value = self.assert_cycle_signals(
+                m, 2, address=zp, rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+2)
 
         with m.Elif(mode == AddressModes.ZEROPAGE_IND.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
-                Assert(data.addresses_read == 1),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == data.read_data[0]),
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 4)
+            zp = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            self.assert_cycle_signals(
+                m, 2, address=zp, rw=1)
+            zp_ind = (zp + self.data.pre_x)[:8]
+            value = self.assert_cycle_signals(
+                m, 3, address=zp_ind, rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+2)
 
         with m.Elif(mode == AddressModes.ABSOLUTE.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-
-                Assert(data.addresses_read == 2),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == Cat(data.read_data[0], data.read_data[1])),
-
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 4)
+            addr_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+            value = self.assert_cycle_signals(
+                m, 3, address=Cat(addr_lo, addr_hi), rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+3)
 
         with m.Elif(mode == AddressModes.ABSOLUTE_X.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-
-                Assert(data.addresses_read == 2),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == Cat(data.read_data[0], data.read_data[1])),
-
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 5)
+            addr_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+            addr_abs = Cat((addr_lo + self.data.pre_x)[:8], addr_hi)
+            self.assert_cycle_signals(
+                m, 3, address=Cat(addr_lo, addr_hi), rw=1)
+            value = self.assert_cycle_signals(
+                m, 4, address=addr_abs, rw=0)
+            # value = self.assert_cycle_signals(m, 5, address=addr_abs, rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+3)
 
         with m.Elif(mode == AddressModes.ABSOLUTE_Y.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 3)),
-
-                Assert(data.addresses_read == 2),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == Cat(data.read_data[0], data.read_data[1])),
-
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 5)
+            addr_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+            addr_abs = Cat((addr_lo + self.data.pre_y)[:8], addr_hi)
+            self.assert_cycle_signals(
+                m, 3, address=Cat(addr_lo, addr_hi), rw=1)
+            value = self.assert_cycle_signals(
+                m, 4, address=addr_abs, rw=0)
+            # value = self.assert_cycle_signals(m, 5, address=addr_abs, rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+3)
 
         with m.Elif(mode == AddressModes.INDIRECT_X.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
-                Assert(data.addresses_read == 4),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == data.read_data[3]),
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 6)
+            zp = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc + 1, rw=1)
+            ind_lo = (zp + self.data.pre_x)[:8]
+            ind_hi = (ind_lo + 1)[:8]
+            addr_lo = self.assert_cycle_signals(
+                m, 2, address=ind_lo, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 3, address=ind_hi, rw=1)
+            self.assert_cycle_signals(
+                m, 4, address=Cat(addr_lo, addr_hi), rw=1)
+            value = self.assert_cycle_signals(
+                m, 5, address=Cat(addr_lo, addr_hi), rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+2)
 
         with m.Elif(mode == AddressModes.INDIRECT_Y.value):
-            m.d.comb += [
-                Assert(data.post_pc == data.plus16(data.pre_pc, 2)),
-                Assert(data.addresses_read == 4),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-
-                Assert(data.addresses_written == 1),
-                Assert(data.write_addr[0] == Cat(data.read_data[1], data.read_data[2])),
-                Assert(data.write_data[0] == written_data),
-            ]
+            self.assert_cycles(m, 6)
+            zp = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_lo = self.assert_cycle_signals(
+                m, 2, address=zp, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 3, address=(zp+1)[:8], rw=1)
+            sum9 = addr_lo + self.data.pre_y
+            addr_ind_lo = sum9[:8]
+            overflow = sum9[8]
+            addr_ind_hi = (addr_hi + overflow)[:8]
+            self.assert_cycle_signals(
+                m, 4, address=Cat(addr_ind_lo, addr_hi), rw=1)
+            value = self.assert_cycle_signals(
+                m, 5, address=Cat(addr_ind_lo, addr_ind_hi), rw=0)
+            m.d.comb += Assert(value == self.data.pre_a)
+            self.assert_registers(m, PC=self.data.pre_pc+2)
