@@ -248,6 +248,14 @@ class Core(Elaboratable):
                 self.JMP(m)
             with m.Case("---10000"):
                 self.BR(m)
+            with m.Case(0xE8):
+                self.INC_DEC_IND(m, func=ALU8Func.INC, index=self.x) # INX
+            with m.Case(0xC8):
+                self.INC_DEC_IND(m, func=ALU8Func.INC, index=self.y) # INY
+            with m.Case(0xCA):
+                self.INC_DEC_IND(m, func=ALU8Func.DEC, index=self.x) # DEX
+            with m.Case(0x88):
+                self.INC_DEC_IND(m, func=ALU8Func.DEC, index=self.y) # DEY
             with m.Case(0x85, 0x95, 0x8D, 0x9D, 0x99, 0x81, 0x91):
                 self.ST(m) # STA
             with m.Case(0x86, 0x96, 0x8E):
@@ -333,6 +341,15 @@ class Core(Elaboratable):
 
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
+
+    def INC_DEC_IND(self, m: Module, func: ALU8Func, index: Statement):
+        with m.If(self.cycle == 1):
+            m.d.comb += self.src8_1.eq(index)
+            m.d.comb += self.src8_2.eq(0)
+            m.d.comb += self.alu8_func.eq(func)
+            m.d.ph1 += index.eq(self.alu8)
+
+            self.end_instr(m, self.pc)
 
     def ST(self, m: Module):
         index = Signal(8)
