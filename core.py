@@ -135,6 +135,11 @@ class Core(Elaboratable):
         self.reset_state = Signal(2)  # where we are during reset
         self.cycle = Signal(4)        # where we are during instr processing
 
+        # page boundary crossed
+        self.sum9 = Signal(9)
+        self.addr_ind = Signal(8)
+        self.overflow = Signal()
+
         # mode bits
         self.mode_a = Signal(3)
         self.mode_b = Signal(3)
@@ -175,6 +180,10 @@ class Core(Elaboratable):
         m.d.comb += self.alu8.eq(alu.output)
         m.d.comb += alu.func.eq(self.alu8_func)
         m.d.comb += self.sr_flags.eq(alu.sr_flags)
+
+        # addressing
+        m.d.comb += self.addr_ind.eq(self.sum9[:8])
+        m.d.comb += self.overflow.eq(self.sum9[8])
 
         self.reset_handler(m)
         with m.If(self.reset_state == 3):
@@ -987,11 +996,7 @@ class Core(Elaboratable):
         return operand
 
     def mode_absolute_indexed(self, m: Module, func: ALU8Func, index: Signal, store: bool = True):
-        sum9 = Signal(9)
-        overflow = Signal()
-        address = self.tmp16l + index
-
-        m.d.comb += overflow.eq(sum9[8])
+        m.d.comb += self.sum9.eq(self.tmp16l + index)
 
         # fetch low operand
         with m.If(self.cycle == 1):
@@ -1004,16 +1009,18 @@ class Core(Elaboratable):
         with m.If(self.cycle == 2):
             m.d.ph1 += self.tmp16h.eq(self.Din)
             m.d.ph1 += self.pc.eq(self.pc + 1)
-            m.d.ph1 += sum9.eq(address)
-            m.d.ph1 += self.tmp16l.eq(address)
             # read from address + I
-            m.d.ph1 += self.Addr.eq(Cat(address[:8], self.Din))
+            m.d.ph1 += self.Addr.eq(Cat(self.addr_ind, self.Din))
             m.d.ph1 += self.RW.eq(1)
 
         with m.If(self.cycle == 3):
-            with m.If(overflow):
+            with m.If(self.overflow):
                 # fix the high byte if overflowed
                 m.d.ph1 += self.tmp16h.eq(self.tmp16h + 1)
+                m.d.ph1 += self.adl.eq(self.addr_ind)
+                m.d.ph1 += self.adh.eq(self.tmp16h + 1)
+                m.d.ph1 += self.RW.eq(1)
+
             with m.Else():
                 # assign readed value
                 m.d.comb += self.src8_2.eq(self.Din)
@@ -1026,22 +1033,15 @@ class Core(Elaboratable):
                 self.end_instr(m, self.pc)
 
         with m.If(self.cycle == 4):
-            with m.If(overflow):
-                # read effective address
-                self.Addr.eq(self.tmp16)
-                self.RW.eq(1)
+            # execute only if page boundary crossed
+            m.d.comb += self.src8_2.eq(self.Din)
+            m.d.comb += self.src8_1.eq(self.a)
+            m.d.comb += self.alu8_func.eq(func)
 
-        # read from corrected address
-        with m.If(self.cycle == 5):
-            with m.If(overflow):
-                m.d.comb += self.src8_2.eq(self.Din)
-                m.d.comb += self.src8_1.eq(self.a)
-                m.d.comb += self.alu8_func.eq(func)
+            if store:
+                m.d.ph1 += self.a.eq(self.alu8)
 
-                if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
-
-                self.end_instr(m, self.pc)
+            self.end_instr(m, self.pc)
 
     def mode_indirect(self, m: Module) -> Statement:
         """Generates logic to get the 16-bit address for indirect mode instructions.

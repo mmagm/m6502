@@ -129,7 +129,7 @@ class AluVerification(Verification):
 
             with m.If(crossed):
                 corrected_value = self.assert_cycle_signals(
-                    m, 4, address=Cat(addr_ind_lo, (addr_hi + crossed)[:8]))
+                    m, 4, address=Cat(addr_ind_lo, (addr_hi + crossed)[:8]), rw=1)
                 self.assert_cycles(m, 5)
                 m.d.comb += input2.eq(corrected_value)
             with m.Else():
@@ -150,7 +150,7 @@ class AluVerification(Verification):
 
             with m.If(crossed):
                 corrected_value = self.assert_cycle_signals(
-                    m, 4, address=Cat(addr_ind_lo, (addr_hi + crossed)[:8]))
+                    m, 4, address=Cat(addr_ind_lo, (addr_hi + crossed)[:8]), rw=1)
                 self.assert_cycles(m, 5)
                 m.d.comb += input2.eq(corrected_value)
             with m.Else():
