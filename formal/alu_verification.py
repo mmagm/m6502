@@ -26,7 +26,11 @@ class AluVerification(Verification):
     def __init__(self):
         super().__init__()
 
-    def common_check(self, m: Module) -> Tuple[Value, Value, Value]:
+    def common_check(self, m: Module,
+                     input: Statement = None,
+                     x_index: Statement = None,
+                     output: Statement = None) -> Tuple[Value, Value, Value]:
+
         """Does common checks for ALU instructions.
 
         Returns a tuple of values: (input1, input2, actual_output, size). The caller should use those
@@ -35,8 +39,18 @@ class AluVerification(Verification):
         mode = self.instr[2:5]
 
         input1 = self.data.pre_a
+        if input is not None:
+            input1 = input
+
         input2 = Signal(8)
+
         actual_output = self.data.post_a
+        if output is not None:
+            actual_output = output
+
+        if x_index is None:
+            x_index = self.data.pre_x
+
         size = Signal(3)
 
         with m.If(mode == AddressModes.INDIRECT_X.value):
@@ -44,7 +58,7 @@ class AluVerification(Verification):
             zp = self.assert_cycle_signals(
                 m, 1, rw=1, address=self.data.pre_pc + 1
             )
-            addr_ind = (zp + self.data.pre_x)[:8]
+            addr_ind = (zp + x_index)[:8]
             addr_lo = self.assert_cycle_signals(
                 m, 2, rw=1, address=addr_ind
             )
@@ -89,7 +103,7 @@ class AluVerification(Verification):
             zp = self.assert_cycle_signals(
                 m, 1, address=self.data.pre_pc+1, rw=1)
             value = self.assert_cycle_signals(
-                m, 3, address=Cat((zp + self.data.pre_x)[:8], 0x00), rw=1)
+                m, 3, address=Cat((zp + x_index)[:8], 0x00), rw=1)
             m.d.comb += input2.eq(value)
             m.d.comb += size.eq(2)
 
@@ -122,8 +136,8 @@ class AluVerification(Verification):
                 m, 1, address=self.data.pre_pc+1, rw=1)
             addr_hi = self.assert_cycle_signals(
                 m, 2, address=self.data.pre_pc+2, rw=1)
-            addr_ind_lo = (addr_lo + self.data.pre_x)[:8]
-            crossed = (addr_lo + self.data.pre_x)[8]
+            addr_ind_lo = (addr_lo + x_index)[:8]
+            crossed = (addr_lo + x_index)[8]
             value = self.assert_cycle_signals(
                 m, 3, address=Cat(addr_ind_lo, addr_hi), rw=1)
 

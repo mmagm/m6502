@@ -271,10 +271,6 @@ class Core(Elaboratable):
                 self.ST(m) # STX
             with m.Case(0x84, 0x94, 0x8C):
                 self.ST(m) # STY
-            # with m.Case(0xA2,0xA6,0xB6,0xAE,0xBE):
-            #     self.LDX(m)
-            # with m.Case(0xA0,0xA4,0xB4,0xAC,0xBC):
-            #     self.LDY(m)
             with m.Case(0xE6, 0xEE, 0xF6, 0xFE):
                 self.ALU2(m, func=ALU8Func.INC)
             with m.Case(0xC6, 0xCE, 0xD6, 0xDE):
@@ -287,22 +283,30 @@ class Core(Elaboratable):
                 self.ALU2(m, func=ALU8Func.LSR)
             with m.Case(0x6A, 0x66, 0x76, 0x6E, 0x7E):
                 self.ALU2(m, func=ALU8Func.ROR)
+            with m.Case(0xA2):
+                self.LD_IND(m, output=self.x) # LDX imm
+            with m.Case(0xA0):
+                self.LD_IND(m, output=self.y) # LDY imm
+            with m.Case(0xA6, 0xB6, 0xAE, 0xBE):
+                self.ALU(m, ALU8Func.LD, x_index=self.y, output=self.x) # LDX
+            with m.Case(0xA4, 0xB4, 0xAC, 0xBC):
+                self.ALU(m, ALU8Func.LD, x_index=self.x, output=self.y) # LDY
             with m.Case("101---01"):
-                self.ALU(m, ALU8Func.LD)
+                self.ALU(m, ALU8Func.LD, x_index=self.x, output=self.a)
             with m.Case("011---01"):
-                self.ALU(m, ALU8Func.ADC)
+                self.ALU(m, ALU8Func.ADC, x_index=self.x, output=self.a)
             with m.Case("111---01"):
-                self.ALU(m, ALU8Func.SBC)
+                self.ALU(m, ALU8Func.SBC, x_index=self.x, output=self.a)
             with m.Case("000---01"):
-                self.ALU(m, ALU8Func.ORA)
+                self.ALU(m, ALU8Func.ORA, x_index=self.x, output=self.a)
             with m.Case("001---01"):
-                self.ALU(m, ALU8Func.AND)
+                self.ALU(m, ALU8Func.AND, x_index=self.x, output=self.a)
             with m.Case("010---01"):
-                self.ALU(m, ALU8Func.EOR)
+                self.ALU(m, ALU8Func.EOR, x_index=self.x, output=self.a)
             with m.Case("0010-100"): # BIT
-                self.ALU(m, ALU8Func.AND, store=False)
+                self.ALU(m, ALU8Func.AND, x_index=self.x, output=self.a, store=False)
             with m.Case("110---01"): # CMP
-                self.ALU(m, ALU8Func.SUB, store=False)
+                self.ALU(m, ALU8Func.SUB, x_index=self.x, output=self.a, store=False)
             with m.Default():  # Illegal
                 self.end_instr(m, self.pc)
 
@@ -518,17 +522,29 @@ class Core(Elaboratable):
             with m.If(self.cycle == 4):
                 self.end_instr(m, operand)
 
-    def ALU(self, m: Module, func: ALU8Func, store: bool = True):
+    def LD_IND(self, m, output: Statement):
+        operand = self.mode_immediate(m)
+
+        with m.If(self.cycle == 1):
+            m.d.comb += self.src8_1.eq(output)
+            m.d.comb += self.src8_2.eq(operand)
+            m.d.comb += self.alu8_func.eq(ALU8Func.LD)
+
+            m.d.ph1 += output.eq(self.alu8)
+
+            self.end_instr(m, self.pc)
+
+    def ALU(self, m: Module, func: ALU8Func, x_index: Statement, output: Statement, store: bool = True):
         with m.If(self.mode_b == AddressModes.INDIRECT_X.value):
             operand, value = self.mode_indirect_x(m)
 
             with m.If(self.cycle == 5):
-                m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.src8_2.eq(value)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
                 self.end_instr(m, self.pc)
 
@@ -538,24 +554,24 @@ class Core(Elaboratable):
             self.read_byte(m, cycle=1, addr=operand, comb_dest=self.src8_2)
 
             with m.If(self.cycle == 2):
-                m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.IMMEDIATE.value):
             operand = self.mode_immediate(m)
 
-            with m.If(self.cycle == 2):
-                m.d.comb += self.src8_1.eq(self.a)
+            with m.If(self.cycle == 1):
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.src8_2.eq(operand)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
                 self.end_instr(m, self.pc)
 
@@ -565,11 +581,11 @@ class Core(Elaboratable):
             self.read_byte(m, cycle=2, addr=operand, comb_dest=self.src8_2)
 
             with m.If(self.cycle == 3):
-                m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
                 self.end_instr(m, self.pc)
 
@@ -577,23 +593,22 @@ class Core(Elaboratable):
             operand = self.mode_indirect_y(m)
 
             with m.If(self.cycle == 4):
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.src8_2.eq(operand)
-                m.d.comb += self.src8_1.eq(self.a)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
             with m.If(self.cycle == 5):
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.src8_2.eq(operand)
-                m.d.comb += self.src8_1.eq(self.a)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
         with m.Elif(self.mode_b == AddressModes.ZEROPAGE_IND.value):
-
             with m.If(self.cycle == 1):
                 m.d.ph1 += self.pc.eq(self.pc + 1)
 
@@ -603,25 +618,25 @@ class Core(Elaboratable):
                 m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 2):
-                m.d.ph1 += self.adl.eq(self.tmp8 + self.x) # zp + X
+                m.d.ph1 += self.adl.eq(self.tmp8 + x_index) # zp + X
                 m.d.ph1 += self.adh.eq(0)
                 m.d.ph1 += self.RW.eq(1)
 
             with m.If(self.cycle == 3):
-                m.d.comb += self.src8_1.eq(self.a)
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.src8_2.eq(self.Din)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
                 self.end_instr(m, self.pc)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_Y.value):
-            self.mode_absolute_indexed(m, func=func, index=self.y, store=store)
+            self.mode_absolute_indexed(m, func=func, index=self.y, output=output, store=store)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE_X.value):
-            self.mode_absolute_indexed(m, func=func, index=self.x, store=store)
+            self.mode_absolute_indexed(m, func=func, index=x_index, output=output, store=store)
 
     def BR(self, m: Module):
         """Branch instructions."""
@@ -995,7 +1010,7 @@ class Core(Elaboratable):
 
         return operand
 
-    def mode_absolute_indexed(self, m: Module, func: ALU8Func, index: Signal, store: bool = True):
+    def mode_absolute_indexed(self, m: Module, func: ALU8Func, index: Signal, output: Statement, store: bool = True):
         m.d.comb += self.sum9.eq(self.tmp16l + index)
 
         # fetch low operand
@@ -1023,23 +1038,23 @@ class Core(Elaboratable):
 
             with m.Else():
                 # assign readed value
+                m.d.comb += self.src8_1.eq(output)
                 m.d.comb += self.src8_2.eq(self.Din)
-                m.d.comb += self.src8_1.eq(self.a)
                 m.d.comb += self.alu8_func.eq(func)
 
                 if store:
-                    m.d.ph1 += self.a.eq(self.alu8)
+                    m.d.ph1 += output.eq(self.alu8)
 
                 self.end_instr(m, self.pc)
 
         with m.If(self.cycle == 4):
             # execute only if page boundary crossed
+            m.d.comb += self.src8_1.eq(output)
             m.d.comb += self.src8_2.eq(self.Din)
-            m.d.comb += self.src8_1.eq(self.a)
             m.d.comb += self.alu8_func.eq(func)
 
             if store:
-                m.d.ph1 += self.a.eq(self.alu8)
+                m.d.ph1 += output.eq(self.alu8)
 
             self.end_instr(m, self.pc)
 
