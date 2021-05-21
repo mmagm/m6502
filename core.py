@@ -283,10 +283,18 @@ class Core(Elaboratable):
                 self.ALU2(m, func=ALU8Func.LSR)
             with m.Case(0x6A, 0x66, 0x76, 0x6E, 0x7E):
                 self.ALU2(m, func=ALU8Func.ROR)
+            with m.Case(0xE0):
+                self.ALU_IMP(m, func=ALU8Func.SUB, output=self.x, store=False) # CPX imm
+            with m.Case(0xE4, 0xEC):
+                self.ALU(m, func=ALU8Func.SUB, x_index=self.x, output=self.x, store=False) # CPX
+            with m.Case(0xC0):
+                self.ALU_IMP(m, func=ALU8Func.SUB, output=self.y, store=False) # CPY imm
+            with m.Case(0xC4, 0xCC):
+                self.ALU(m, func=ALU8Func.SUB, x_index=self.x, output=self.y, store=False) # CPY
             with m.Case(0xA2):
-                self.LD_IND(m, output=self.x) # LDX imm
+                self.ALU_IMP(m, func=ALU8Func.LD, output=self.x) # LDX imm
             with m.Case(0xA0):
-                self.LD_IND(m, output=self.y) # LDY imm
+                self.ALU_IMP(m, func=ALU8Func.LD, output=self.y) # LDY imm
             with m.Case(0xA6, 0xB6, 0xAE, 0xBE):
                 self.ALU(m, ALU8Func.LD, x_index=self.y, output=self.x) # LDX
             with m.Case(0xA4, 0xB4, 0xAC, 0xBC):
@@ -522,15 +530,16 @@ class Core(Elaboratable):
             with m.If(self.cycle == 4):
                 self.end_instr(m, operand)
 
-    def LD_IND(self, m, output: Statement):
+    def ALU_IMP(self, m, func: ALU8Func, output: Statement, store: bool = True):
         operand = self.mode_immediate(m)
 
         with m.If(self.cycle == 1):
             m.d.comb += self.src8_1.eq(output)
             m.d.comb += self.src8_2.eq(operand)
-            m.d.comb += self.alu8_func.eq(ALU8Func.LD)
+            m.d.comb += self.alu8_func.eq(func)
 
-            m.d.ph1 += output.eq(self.alu8)
+            if store:
+                m.d.ph1 += output.eq(self.alu8)
 
             self.end_instr(m, self.pc)
 

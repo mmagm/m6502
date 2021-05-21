@@ -30,11 +30,6 @@ class Formal(AluVerification):
     def check(self, m: Module):
         input1, input2, actual_output, size = self.common_check(m)
 
-        sinput1 = Signal(signed(8))
-        sinput2 = Signal(signed(8))
-        m.d.comb += sinput1.eq(input1)
-        m.d.comb += sinput2.eq(input2)
-
         z = (input1 == input2)
         n = (input1 - input2)[7]
         c = (input1 < input2)
