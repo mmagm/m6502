@@ -19,7 +19,7 @@ from enum import IntEnum
 from typing import List, Dict, Tuple, Optional
 import importlib
 
-from nmigen import Const, Signal, Elaboratable, Module, Cat, Mux, unsigned
+from nmigen import Const, Signal, Elaboratable, Module, Cat, Mux, Value, unsigned
 from nmigen import ClockDomain, ClockSignal # , ResetSignal
 from nmigen.build import Platform
 from nmigen.hdl.ast import Statement
@@ -84,7 +84,7 @@ class Core(Elaboratable):
         self.a = Signal(8)
         self.x = Signal(8)
         self.y = Signal(8)
-        self.sp = Signal(8, reset_less=True)
+        self.sp = Signal(8, reset=0xFF)
         self.pc = Signal(16, reset_less=True)
         self.tmp8 = Signal(8)
         self.tmp16 = Signal(16)
@@ -257,6 +257,14 @@ class Core(Elaboratable):
                 self.JMP(m)
             with m.Case("---10000"):
                 self.BR(m)
+            with m.Case(0x48):
+                self.PUSH(m, register=self.a) # PHA
+            with m.Case(0x08):
+                self.PUSH(m, register=self.sr_flags) # PHP
+            with m.Case(0x68):
+                self.PULL(m, func=ALU8Func.LD, register=self.a) # PLA
+            with m.Case(0x28):
+                self.PULL(m, func=ALU8Func.LDSR) # PLP
             with m.Case(0xAA):
                 self.TR(m, func=ALU8Func.LD, input=self.a, output=self.x) # TAX
             with m.Case(0xA8):
@@ -374,6 +382,38 @@ class Core(Elaboratable):
 
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
+
+    def PUSH(self, m: Module, register: Value):
+        with m.If(self.cycle == 1):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.sp.eq(self.sp - 1)
+            m.d.ph1 += self.RW.eq(0)
+            m.d.ph1 += self.Dout.eq(register)
+
+        with m.If(self.cycle == 2):
+            self.end_instr(m, self.pc)
+
+    def PULL(self, m: Module, func: ALU8Func, register: Statement = None):
+        with m.If(self.cycle == 1):
+            pass
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp + 1)
+            m.d.ph1 += self.RW.eq(1)
+
+            m.d.ph1 += self.sp.eq(self.sp + 1)
+
+        with m.If(self.cycle == 3):
+            m.d.comb += self.src8_1.eq(0)
+            m.d.comb += self.src8_2.eq(self.Din)
+            m.d.comb += self.alu8_func.eq(func)
+
+            if register is not None:
+                m.d.ph1 += register.eq(self.alu8)
+
+            self.end_instr(m, self.pc)
 
     def INC_DEC_IND(self, m: Module, func: ALU8Func, index: Statement):
         with m.If(self.cycle == 1):

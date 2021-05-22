@@ -145,7 +145,7 @@ class Verification(object):
         m.d.comb += [
             Assert(self.data.post_sr_flags[Flags.N] == expectedFlags[Flags.N]),
             Assert(self.data.post_sr_flags[Flags.V] == expectedFlags[Flags.V]),
-            Assert(self.data.post_sr_flags[Flags._] == expectedFlags[Flags._]),
+            # Assert(self.data.post_sr_flags[Flags._] == expectedFlags[Flags._]),
             Assert(self.data.post_sr_flags[Flags.B] == expectedFlags[Flags.B]),
             Assert(self.data.post_sr_flags[Flags.D] == expectedFlags[Flags.D]),
             Assert(self.data.post_sr_flags[Flags.I] == expectedFlags[Flags.I]),
