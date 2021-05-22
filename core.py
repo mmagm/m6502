@@ -257,6 +257,18 @@ class Core(Elaboratable):
                 self.JMP(m)
             with m.Case("---10000"):
                 self.BR(m)
+            with m.Case(0xAA):
+                self.TR(m, func=ALU8Func.LD, input=self.a, output=self.x) # TAX
+            with m.Case(0xA8):
+                self.TR(m, func=ALU8Func.LD, input=self.a, output=self.y) # TAY
+            with m.Case(0xBA):
+                self.TR(m, func=ALU8Func.LD, input=self.sp, output=self.x) # TSX
+            with m.Case(0x8A):
+                self.TR(m, func=ALU8Func.LD, input=self.x, output=self.a) # TXA
+            with m.Case(0x9A):
+                self.TR(m, func=ALU8Func.TR, input=self.x, output=self.sp) # TXS
+            with m.Case(0x98):
+                self.TR(m, func=ALU8Func.LD, input=self.y, output=self.a) # TYA
             with m.Case(0xE8):
                 self.INC_DEC_IND(m, func=ALU8Func.INC, index=self.x) # INX
             with m.Case(0xC8):
@@ -529,6 +541,16 @@ class Core(Elaboratable):
 
             with m.If(self.cycle == 4):
                 self.end_instr(m, operand)
+
+    def TR(self, m: Module, func: ALU8Func, input: Statement, output: Statement):
+        with m.If(self.cycle == 1):
+            m.d.comb += self.src8_1.eq(output)
+            m.d.comb += self.src8_2.eq(input)
+            m.d.comb += self.alu8_func.eq(func)
+
+            m.d.ph1 += output.eq(self.alu8)
+
+            self.end_instr(m, self.pc)
 
     def ALU_IMP(self, m, func: ALU8Func, output: Statement, store: bool = True):
         operand = self.mode_immediate(m)

@@ -47,6 +47,7 @@ class ALU8Func(IntEnum):
     LSR = 18
     ROL = 19
     ROR = 20
+    TR = 21
 
 class ALU8(Elaboratable):
     def __init__(self):
@@ -79,6 +80,10 @@ class ALU8(Elaboratable):
                 m.d.comb += self.output.eq(self.input2)
                 m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
                 m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
+
+            # load without flags
+            with m.Case(ALU8Func.TR):
+                m.d.comb += self.output.eq(self.input2)
 
             with m.Case(ALU8Func.ADC):
                 carry_in = self.sr_flags[Flags.C]
