@@ -257,6 +257,10 @@ class Core(Elaboratable):
                 self.JMP(m)
             with m.Case("---10000"):
                 self.BR(m)
+            with m.Case(0x20):
+                self.JSR(m) # JSR
+            with m.Case(0x60):
+                self.RTS(m)
             with m.Case(0x48):
                 self.PUSH(m, register=self.a) # PHA
             with m.Case(0x08):
@@ -361,6 +365,9 @@ class Core(Elaboratable):
             m.d.ph1 += self.RW.eq(1)
             m.d.ph1 += self.cycle.eq(0)
 
+    def interrupt_handler(self, m: Module):
+        pass
+
     def maybe_do_formal_verification(self, m: Module):
         if self.verification is not None:
             with m.If((self.cycle == 0) & (self.reset_state == 3)):
@@ -382,6 +389,66 @@ class Core(Elaboratable):
 
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
+
+    def JSR(self, m: Module):
+        with m.If(self.cycle == 1):
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+            m.d.ph1 += self.tmp16l.eq(self.Din) # fetch low address
+            m.d.ph1 += self.Addr.eq(self.pc + 1)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.tmp16h.eq(self.Din) # fetch high address
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 3):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.Dout.eq(self.pch)
+            m.d.ph1 += self.RW.eq(0)
+
+            m.d.ph1 += self.sp.eq(self.sp - 1)
+
+        with m.If(self.cycle == 4):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.Dout.eq(self.pcl)
+            m.d.ph1 += self.RW.eq(0)
+
+            m.d.ph1 += self.sp.eq(self.sp - 1)
+
+            m.d.ph1 += self.pc.eq(self.tmp16)
+
+        with m.If(self.cycle == 5):
+            self.end_instr(m, self.pc)
+
+
+    def RTS(self, m: Module):
+        with m.If(self.cycle == 1):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.RW.eq(1)
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp + 1)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 3):
+            m.d.ph1 += self.pcl.eq(self.Din)
+            m.d.ph1 += self.sp.eq(self.sp + 2)
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp + 2)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 4):
+            m.d.ph1 += self.pch.eq(self.Din)
+
+        with m.If(self.cycle == 5):
+            self.end_instr(m, self.pc)
 
     def PUSH(self, m: Module, register: Value):
         with m.If(self.cycle == 1):
