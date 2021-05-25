@@ -243,6 +243,10 @@ class Core(Elaboratable):
 
     def execute(self, m: Module):
         with m.Switch(self.instr):
+            with m.Case(0x00):
+                self.BRK(m)
+            with m.Case(0x40):
+                self.RTI(m)
             with m.Case(0xEA):
                 self.NOP(m)
             with m.Case("00-11000"):
@@ -389,6 +393,78 @@ class Core(Elaboratable):
 
     def NOP(self, m: Module):
         self.end_instr(m, self.pc)
+
+    def BRK(self, m: Module):
+        with m.If(self.cycle == 1):
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.Dout.eq((self.pc + 1)[8:]) # store PCH
+            m.d.ph1 += self.RW.eq(0)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp - 1)
+            m.d.ph1 += self.Dout.eq(self.pcl) # store PCL
+            m.d.ph1 += self.RW.eq(0)
+
+        with m.If(self.cycle == 3):
+            m.d.ph1 += self.sp.eq(self.sp - 3)
+
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp - 2)
+            m.d.ph1 += self.Dout.eq(self.sr_flags | 0x30) # store SR with B = 1 (00110000)
+            m.d.ph1 += self.RW.eq(0)
+
+        with m.If(self.cycle == 4):
+            m.d.ph1 += self.Addr.eq(0xFFFE)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 5):
+            m.d.ph1 += self.pcl.eq(self.Din) # fetch FFFE
+
+            m.d.ph1 += self.Addr.eq(0xFFFF)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 6):
+            m.d.ph1 += self.pch.eq(self.Din) # fetch FFFF
+
+            self.end_instr(m, Cat(self.pcl, self.Din))
+
+    def RTI(self, m: Module):
+        with m.If(self.cycle == 1):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.RW.eq(1)
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp + 1)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 3):
+            # load sr flags from stack
+            m.d.comb += self.src8_1.eq(0)
+            m.d.comb += self.src8_2.eq(self.Din)
+            m.d.comb += self.alu8_func.eq(ALU8Func.LDSR)
+
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp + 2)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 4):
+            m.d.ph1 += self.pcl.eq(self.Din) # fetch pcl
+
+            m.d.ph1 += self.sp.eq(self.sp + 3)
+
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp + 3)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 5):
+            m.d.ph1 += self.pch.eq(self.Din) # fetch pch
+            self.end_instr(m, Cat(self.pcl, self.Din))
 
     def JSR(self, m: Module):
         with m.If(self.cycle == 1):
