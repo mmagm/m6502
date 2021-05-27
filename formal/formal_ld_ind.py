@@ -43,7 +43,7 @@ class Formal(AluVerification):
                     m, 1, address=self.data.pre_pc+1, rw=1)
                 z = output == 0
                 n = output[7]
-                self.assert_registers(m, X=output, PC=self.data.pre_pc+1)
+                self.assert_registers(m, X=output, PC=self.data.pre_pc+2)
                 self.assertFlags(m, Z=z, N=n)
             with m.Else():
                 _, input2, actual_output, size = self.common_check(m,
@@ -65,7 +65,7 @@ class Formal(AluVerification):
                     m, 1, address=self.data.pre_pc+1, rw=1)
                 z = output == 0
                 n = output[7]
-                self.assert_registers(m, Y=output, PC=self.data.pre_pc+1)
+                self.assert_registers(m, Y=output, PC=self.data.pre_pc+2)
                 self.assertFlags(m, Z=z, N=n)
             with m.Else():
                 _, input2, actual_output, size = self.common_check(m,

@@ -92,7 +92,7 @@ class AluVerification(Verification):
             m.d.comb += size.eq(3)
 
         with m.Elif(mode == AddressModes.IMMEDIATE.value):
-            self.assert_cycles(m, 3)
+            self.assert_cycles(m, 2)
             value = self.assert_cycle_signals(
                 m, 1, address=self.data.pre_pc+1, rw=1)
             m.d.comb += input2.eq(value)

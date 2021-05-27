@@ -48,7 +48,7 @@ class Formal(AluVerification):
                 z = (input1 == input2)
                 n = (input1 - input2)[7]
                 c = (input1 < input2)
-                self.assert_registers(m, PC=self.data.pre_pc+1)
+                self.assert_registers(m, PC=self.data.pre_pc+2)
                 self.assertFlags(m, Z=z, N=n, C=c)
             with m.Else():
                 input1, input2, actual_output, size = self.common_check(m,
@@ -72,7 +72,7 @@ class Formal(AluVerification):
                 z = (input1 == input2)
                 n = (input1 - input2)[7]
                 c = (input1 < input2)
-                self.assert_registers(m, PC=self.data.pre_pc+1)
+                self.assert_registers(m, PC=self.data.pre_pc+2)
                 self.assertFlags(m, Z=z, N=n, C=c)
             with m.Else():
                 input1, input2, actual_output, size = self.common_check(m,

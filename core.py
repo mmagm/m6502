@@ -746,7 +746,7 @@ class Core(Elaboratable):
             if store:
                 m.d.ph1 += output.eq(self.alu8)
 
-            self.end_instr(m, self.pc)
+            self.end_instr(m, self.pc + 1)
 
     def ALU(self, m: Module, func: ALU8Func, x_index: Statement, output: Statement, store: bool = True):
         with m.If(self.mode_b == AddressModes.INDIRECT_X.value):
@@ -787,7 +787,7 @@ class Core(Elaboratable):
                 if store:
                     m.d.ph1 += output.eq(self.alu8)
 
-                self.end_instr(m, self.pc)
+                self.end_instr(m, self.pc + 1)
 
         with m.Elif(self.mode_b == AddressModes.ABSOLUTE.value):
             operand = self.mode_absolute(m)
