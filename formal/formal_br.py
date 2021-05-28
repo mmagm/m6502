@@ -35,30 +35,19 @@ class Branch(IntEnum):
 
 class Formal(Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches("---10000")
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        m.d.comb += [
-            Assert(data.post_sr_flags == data.pre_sr_flags),
-            Assert(data.post_a == data.pre_a),
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_written == 0),
-        ]
+    def check(self, m: Module):
+        operand = self.assert_cycle_signals(
+            m, 1, address=self.data.pre_pc+1, rw=1)
 
-        m.d.comb += [
-            Assert(data.addresses_read == 1),
-            Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-        ]
-
-        n = data.pre_sr_flags[Flags.N]
-        v = data.pre_sr_flags[Flags.V]
-        c = data.pre_sr_flags[Flags.C]
-        z = data.pre_sr_flags[Flags.Z]
+        n = self.data.pre_sr_flags[Flags.N]
+        v = self.data.pre_sr_flags[Flags.V]
+        c = self.data.pre_sr_flags[Flags.C]
+        z = self.data.pre_sr_flags[Flags.Z]
 
         take_branch = Array([
             n == 0,
@@ -71,13 +60,10 @@ class Formal(Verification):
             z == 1,
         ])
 
-        mode_a = instr[5:8]
-
-        operand = data.read_data[0]
+        mode_a = self.instr[5:8]
 
         pre_pc = Signal(16)
-
-        m.d.comb += pre_pc.eq(data.pre_pc + 2)
+        m.d.comb += pre_pc.eq(self.data.pre_pc + 2)
 
         sum9 = Signal(9)
         m.d.comb += sum9.eq(pre_pc[:8] + operand)
@@ -89,14 +75,15 @@ class Formal(Verification):
         m.d.comb += crossed.eq(co ^ backwards)
 
         with m.If(take_branch[mode_a]):
-            m.d.comb += Assert(data.post_pc[:8] == sum9[:8])
-
             with m.If(crossed):
+                self.assert_cycles(m, 4)
                 with m.If(backwards):
-                    m.d.comb += Assert(data.post_pc[8:] == (pre_pc[8:] - 1)[:8])
+                    self.assert_registers(m, PC=Cat(sum9[:8], (pre_pc[8:] - 1)[:8]))
                 with m.Else():
-                    m.d.comb += Assert(data.post_pc[8:] == (pre_pc[8:] + 1)[:8])
+                    self.assert_registers(m, PC=Cat(sum9[:8], (pre_pc[8:] + 1)[:8]))
             with m.Else():
-                m.d.comb += Assert(data.post_pc[8:] == pre_pc[8:])
+                self.assert_cycles(m, 3)
+                self.assert_registers(m, PC=Cat(sum9[:8], pre_pc[8:]))
         with m.Else():
-            m.d.comb += Assert(data.post_pc == pre_pc)
+            self.assert_cycles(m, 2)
+            self.assert_registers(m, PC=pre_pc)

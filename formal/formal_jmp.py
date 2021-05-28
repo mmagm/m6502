@@ -21,33 +21,36 @@ from .verification import FormalData, Verification
 
 class Formal(Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches("01-01100")
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        m.d.comb += [
-            Assert(data.post_sr_flags == data.pre_sr_flags),
-            Assert(data.post_a == data.pre_a),
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_written == 0)
-        ]
+    def check(self, m: Module):
+        mode_a = self.instr[5:8]
 
-        with m.If(instr == 0x4C):
-            m.d.comb += [
-                Assert(data.addresses_read == 2),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-                Assert(data.post_pc == Cat(data.read_data[1], data.read_data[0])),
-            ]
+        self.assertFlags(m)
 
-        with m.If(instr == 0x6C):
-            m.d.comb += [
-                Assert(data.addresses_read == 4),
-                Assert(data.read_addr[0] == data.plus16(data.pre_pc, 1)),
-                Assert(data.read_addr[1] == data.plus16(data.pre_pc, 2)),
-                Assert(data.post_pc == Cat(data.read_data[3], data.read_data[2])),
-            ]
+        with m.If(mode_a == 2):
+            self.assert_cycles(m, 3)
+            addr_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            addr_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+            self.assert_registers(m, PC=Cat(addr_lo, addr_hi))
+
+        with m.Elif(mode_a == 3):
+            self.assert_cycles(m, 5)
+
+            pointer_lo = self.assert_cycle_signals(
+                m, 1, address=self.data.pre_pc+1, rw=1)
+            pointer_hi = self.assert_cycle_signals(
+                m, 2, address=self.data.pre_pc+2, rw=1)
+
+            addr_lo = self.assert_cycle_signals(
+                m, 3, address=Cat(pointer_lo, pointer_hi), rw=1)
+
+            addr_hi = self.assert_cycle_signals(
+                m, 4, address=Cat((pointer_lo + 1)[:8], pointer_hi), rw=1)
+
+            self.assert_registers(m, PC=Cat(addr_lo, addr_hi))

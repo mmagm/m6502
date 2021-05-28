@@ -32,34 +32,25 @@ CLV = 0xB8 # "10111000"
 
 class Formal(Verification):
     def __init__(self):
-        pass
+        super().__init__()
 
     def valid(self, instr: Value) -> Value:
         return instr.matches(CLC, SEC, CLD, SED, CLI, SEI, CLV)
 
-    def check(self, m: Module, instr: Value, data: FormalData):
-        m.d.comb += [
-            Assert(data.post_a == data.pre_a),
-            Assert(data.post_x == data.pre_x),
-            Assert(data.post_y == data.pre_y),
-            Assert(data.post_sp == data.pre_sp),
-            Assert(data.addresses_read == 0),
-            Assert(data.addresses_written == 0)
-        ]
-
-        m.d.comb += Assert(data.post_pc == data.plus16(data.pre_pc, 1))
+    def check(self, m: Module):
+        self.assert_cycles(m, 2)
 
         c = Signal()
         d = Signal()
         i = Signal()
         v = Signal()
 
-        m.d.comb += c.eq(data.pre_sr_flags[Flags.C])
-        m.d.comb += d.eq(data.pre_sr_flags[Flags.D])
-        m.d.comb += i.eq(data.pre_sr_flags[Flags.I])
-        m.d.comb += v.eq(data.pre_sr_flags[Flags.V])
+        m.d.comb += c.eq(self.data.pre_sr_flags[Flags.C])
+        m.d.comb += d.eq(self.data.pre_sr_flags[Flags.D])
+        m.d.comb += i.eq(self.data.pre_sr_flags[Flags.I])
+        m.d.comb += v.eq(self.data.pre_sr_flags[Flags.V])
 
-        with m.Switch(instr):
+        with m.Switch(self.instr):
             with m.Case(CLC):
                 m.d.comb += c.eq(0)
             with m.Case(SEC):
@@ -75,4 +66,5 @@ class Formal(Verification):
             with m.Case(CLV):
                 m.d.comb += v.eq(0)
 
-        self.assertFlags(m, data.post_sr_flags, data.pre_sr_flags, C=c, D=d, I=i, V=v)
+        self.assertFlags(m, C=c, D=d, I=i, V=v)
+        self.assert_registers(m, PC=self.data.pre_pc+1)

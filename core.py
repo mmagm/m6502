@@ -866,25 +866,22 @@ class Core(Elaboratable):
         crossed = Signal()
         m.d.comb += crossed.eq(co ^ backwards)
 
-        with m.If(self.cycle == 2):
-            m.d.ph1 += self.tmp16l.eq(sum9[:8])
-            m.d.ph1 += self.tmp16h.eq(self.pch)
-
-        with m.If(self.cycle == 3):
+        with m.If(self.cycle == 1):
             take_branch = self.branch_cond(m)
 
-            with m.If(take_branch):
-                with m.If(crossed):
-                    m.d.ph1 += self.tmp16h.eq(Mux(backwards,
-                                                  self.tmp16h - crossed,
-                                                  self.tmp16h + crossed))
-                with m.Else():
-                    self.end_instr(m, self.tmp16)
+            with m.If(~take_branch):
+                self.end_instr(m, self.pc + 1)
 
+        with m.If(self.cycle == 2):
+            with m.If(crossed):
+                m.d.ph1 += self.tmp16l.eq(sum9[:8])
+                m.d.ph1 += self.tmp16h.eq(Mux(backwards,
+                                              self.pch - crossed,
+                                              self.pch + crossed))
             with m.Else():
-                self.end_instr(m, self.pc)
+                self.end_instr(m, Cat(sum9[:8], self.pch))
 
-        with m.If(self.cycle == 4):
+        with m.If(self.cycle == 3):
             self.end_instr(m, self.tmp16)
 
     def branch_cond(self, m: Module) -> Signal:
