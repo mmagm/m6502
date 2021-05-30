@@ -15,10 +15,8 @@
 
 from enum import IntEnum
 
-from nmigen import Signal, Value, Cat, Module, signed, Mux, Const, Array
-from nmigen.hdl.ast import Statement
-from nmigen.asserts import Assert
-from .verification import FormalData, Verification
+from nmigen import Signal, Value, Cat, Module, Const, Array
+from .verification import Verification
 from consts import Flags
 
 

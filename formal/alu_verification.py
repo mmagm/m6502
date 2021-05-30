@@ -15,10 +15,10 @@
 
 from typing import Tuple
 
-from nmigen import Signal, Value, Cat, Module, Mux, Const, unsigned
+from nmigen import Signal, Value, Cat, Module, Const
 from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert, Assume
-from .verification import FormalData, Verification
+from .verification import Verification
 from consts import AddressModes
 
 
@@ -242,7 +242,9 @@ class Alu2Verification(Verification):
                 m, 1, address=self.data.pre_pc+1, rw=1)
             addr_hi = self.assert_cycle_signals(
                 m, 2, address=self.data.pre_pc+2, rw=1)
-            addr_abs = Cat((addr_lo + self.data.pre_x)[:8], addr_hi)
+            sum9 = Signal(9)
+            m.d.comb += sum9.eq(addr_lo + self.data.pre_x)
+            addr_abs = Cat(sum9[:8], addr_hi + sum9[8])
             value = self.assert_cycle_signals(
                 m, 4, address=addr_abs, rw=1)
             self.assert_cycle_signals(m, 5, address=addr_abs, rw=0)

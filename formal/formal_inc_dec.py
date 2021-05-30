@@ -13,11 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from nmigen import Signal, Value, Cat, Module, signed, Mux
-from nmigen.hdl.ast import Statement
+from nmigen import Signal, Value, Module
 from nmigen.asserts import Assert
-from .verification import FormalData, Verification
-from .alu_verification import AluVerification, Alu2Verification
+from .alu_verification import Alu2Verification
 from consts import Flags
 
 

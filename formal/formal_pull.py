@@ -13,11 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from nmigen import Const, Signal, Value, Cat, Module, signed, Mux, unsigned
-from nmigen.hdl.ast import Statement
-from nmigen.asserts import Assert
-from .verification import FormalData, Verification
-from .alu_verification import AluVerification, Alu2Verification
+from nmigen import Const, Signal, Value, Module
+from .verification import Verification
 from consts import Flags
 
 
@@ -25,7 +22,7 @@ PLA = 0x68
 PLP = 0x28
 
 
-class Formal(AluVerification):
+class Formal(Verification):
     def __init__(self):
         super().__init__()
 

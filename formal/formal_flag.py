@@ -15,11 +15,10 @@
 
 from enum import IntEnum
 
-from nmigen import Signal, Value, Cat, Module, signed, Mux, Const, Array
-from nmigen.hdl.ast import Statement
-from nmigen.asserts import Assert
-from .verification import FormalData, Verification
+from nmigen import Signal, Value, Module
+from .verification import Verification
 from consts import Flags
+
 
 CLC = 0x18 # "00011000"
 SEC = 0x38 # "00111000"

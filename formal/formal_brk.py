@@ -13,11 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from nmigen import Const, Signal, Value, Cat, Module, signed, Mux, unsigned
+from nmigen import Const, Signal, Value, Cat, Module
 from nmigen.hdl.ast import Statement
 from nmigen.asserts import Assert
 from .verification import FormalData, Verification
-from .alu_verification import AluVerification, Alu2Verification
+from .alu_verification import AluVerification
 from consts import Flags
 
 
@@ -32,13 +32,13 @@ class Formal(AluVerification):
         self.assert_cycles(m, 7)
 
         self.assert_cycle_signals(
-            m, 2, address=Cat(self.data.pre_sp, Const(1, unsigned(8))), rw=0)
+            m, 2, address=Cat(self.data.pre_sp, Const(1, 8)), rw=0)
 
         self.assert_cycle_signals(
-            m, 3, address=Cat((self.data.pre_sp - 1)[:8], Const(1, unsigned(8))), rw=0)
+            m, 3, address=Cat((self.data.pre_sp - 1)[:8], Const(1, 8)), rw=0)
 
         self.assert_cycle_signals(
-            m, 4, address=Cat((self.data.pre_sp - 2)[:8], Const(1, unsigned(8))), rw=0)
+            m, 4, address=Cat((self.data.pre_sp - 2)[:8], Const(1, 8)), rw=0)
 
         addr_lo = self.assert_cycle_signals(
             m, 5, address=Const(0xFFFE, 16), rw=1)

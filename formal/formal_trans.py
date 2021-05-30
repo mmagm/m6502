@@ -13,14 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from nmigen import Signal, Value, Cat, Module, signed, Mux
-from nmigen.hdl.ast import Statement
-from nmigen.asserts import Assert, Assume
-from .verification import FormalData, Verification
-from .alu_verification import AluVerification, Alu2Verification
+from nmigen import Signal, Value, Module
+from .verification import Verification
 from consts import Flags
 
-class Formal(AluVerification):
+class Formal(Verification):
     def __init__(self):
         super().__init__()
 
