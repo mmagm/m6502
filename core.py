@@ -134,6 +134,11 @@ class Core(Elaboratable):
         # internal state
         self.reset_state = Signal(2)  # where we are during reset
         self.cycle = Signal(4)        # where we are during instr processing
+        self.interrupt = Signal()
+        # NMI    : $FFFA-$FFFB
+        # RESET  : $FFFC-$FFFD
+        # IRQ/BRK: $FFFE-$FFFF
+        self.interrupt_vec = Signal(2)
 
         # page boundary crossed
         self.sum9 = Signal(9)
@@ -187,7 +192,9 @@ class Core(Elaboratable):
 
         self.reset_handler(m)
         with m.If(self.reset_state == 3):
-            with m.If(self.cycle == 0):
+            with m.If(self.interrupt):
+                self.interrupt_handler(m)
+            with m.Elif(self.cycle == 0):
                 self.fetch(m)
             with m.Else():
                 self.execute(m)
@@ -349,11 +356,11 @@ class Core(Elaboratable):
     def reset_handler(self, m: Module):
         with m.Switch(self.reset_state):
             with m.Case(0):
-                m.d.ph1 += self.Addr.eq(0xFFFE)
+                m.d.ph1 += self.Addr.eq(0xFFFC)
                 m.d.ph1 += self.RW.eq(1)
                 m.d.ph1 += self.reset_state.eq(1)
             with m.Case(1):
-                m.d.ph1 += self.Addr.eq(0xFFFF)
+                m.d.ph1 += self.Addr.eq(0xFFFD)
                 m.d.ph1 += self.RW.eq(1)
                 m.d.ph1 += self.tmp8.eq(self.Din)
                 m.d.ph1 += self.reset_state.eq(2)
@@ -362,20 +369,67 @@ class Core(Elaboratable):
                 reset_vec = Cat(self.tmp8, self.Din)
                 self.end_instr(m, reset_vec)
 
+    def interrupt_handler(self, m: Module):
+        with m.If(self.cycle == 1):
+            m.d.ph1 += self.pc.eq(self.pc + 1)
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp)
+            m.d.ph1 += self.Dout.eq((self.pc + 1)[8:]) # store PCH
+            m.d.ph1 += self.RW.eq(0)
+
+        with m.If(self.cycle == 2):
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp - 1)
+            m.d.ph1 += self.Dout.eq(self.pcl) # store PCL
+            m.d.ph1 += self.RW.eq(0)
+
+        with m.If(self.cycle == 3):
+            with m.If(self.interrupt_vec == 2): # unless NMI
+                m.d.comb += self.alu8_func.eq(ALU8Func.SEI)
+
+            m.d.ph1 += self.sp.eq(self.sp - 3)
+
+            m.d.ph1 += self.adh.eq(0x01)
+            m.d.ph1 += self.adl.eq(self.sp - 2)
+            m.d.ph1 += self.Dout.eq(self.sr_flags)
+            m.d.ph1 += self.RW.eq(0)
+
+        with m.If(self.cycle == 4):
+            m.d.ph1 += self.Addr.eq(0xFFFA | (self.interrupt_vec << 1))
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 5):
+            m.d.ph1 += self.pcl.eq(self.Din) # fetch low byte
+            m.d.ph1 += self.Addr.eq(self.Addr + 1)
+            m.d.ph1 += self.RW.eq(1)
+
+        with m.If(self.cycle == 6):
+            m.d.ph1 += self.pch.eq(self.Din) # fetch high byte
+            self.end_instr(m, Cat(self.pcl, self.Din))
+
     def end_instr_flag_handler(self, m: Module):
         with m.If(self.end_instr_flag):
             m.d.ph1 += self.pc.eq(self.end_instr_addr)
-            m.d.ph1 += self.Addr.eq(self.end_instr_addr)
-            m.d.ph1 += self.RW.eq(1)
             m.d.ph1 += self.cycle.eq(0)
 
-    def interrupt_handler(self, m: Module):
-        pass
+            with m.If(self.NMI):
+                m.d.ph1 += self.interrupt.eq(1)
+                m.d.ph1 += self.interrupt_vec.eq(0)
+            with m.Elif(self.IRQ & ~self.sr_flags[Flags.I]):
+                m.d.ph1 += self.interrupt.eq(1)
+                m.d.ph1 += self.interrupt_vec.eq(2)
+            with m.Else():
+                m.d.ph1 += self.interrupt.eq(0)
+                m.d.ph1 += self.interrupt_vec.eq(0)
+                m.d.ph1 += self.pc.eq(self.end_instr_addr)
+                m.d.ph1 += self.Addr.eq(self.end_instr_addr)
+                m.d.ph1 += self.RW.eq(1)
 
     def maybe_do_formal_verification(self, m: Module):
         if self.verification is not None:
             with m.If((self.cycle == 0) & (self.reset_state == 3)):
-                with m.If(self.verification.valid(self.Din)):
+
+                with m.If(self.verification.valid(self.Din) & (~self.interrupt)):
                     m.d.ph1 += self.formalData.preSnapshot(
                         m, self.Din, self.sr_flags, self.a, self.x, self.y, self.sp, self.pc)
                 with m.Else():
@@ -409,6 +463,8 @@ class Core(Elaboratable):
             m.d.ph1 += self.RW.eq(0)
 
         with m.If(self.cycle == 3):
+            m.d.comb += self.alu8_func.eq(ALU8Func.SEI)
+
             m.d.ph1 += self.sp.eq(self.sp - 3)
 
             m.d.ph1 += self.adh.eq(0x01)
@@ -1330,9 +1386,9 @@ if __name__ == "__main__":
                               core.end_instr_flag)
 
         # Verify reset does what it's supposed to
-        with m.If(Past(rst, 4) & ~Past(rst, 3) & ~Past(rst, 2) & ~Past(rst)):
-            m.d.ph1 += Assert(Past(core.Addr, 2) == 0xFFFE)
-            m.d.ph1 += Assert(Past(core.Addr) == 0xFFFF)
+        with m.If(Past(rst, 4) & ~Past(rst, 3) & ~Past(rst, 2) & ~Past(rst) & ~Past(core.NMI) & ~Past(core.IRQ)):
+            m.d.ph1 += Assert(Past(core.Addr, 2) == 0xFFFC)
+            m.d.ph1 += Assert(Past(core.Addr) == 0xFFFD)
             m.d.ph1 += Assert(core.Addr[:8] == Past(core.Din, 2))
             m.d.ph1 += Assert(core.Addr[8:] == Past(core.Din))
             m.d.ph1 += Assert(core.Addr == core.pc)
@@ -1342,8 +1398,8 @@ if __name__ == "__main__":
     else:
         # Fake memory
         mem = {
-            0xFFFE: 0x12,
-            0xFFFF: 0x34,
+            0xFFFC: 0x12,
+            0xFFFD: 0x34,
             0x1234: 0x4C,  # JMP 0xA010
             0x1235: 0xA0,
             0x1236: 0x10,
