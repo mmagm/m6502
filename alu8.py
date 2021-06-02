@@ -71,9 +71,8 @@ class ALU8(Elaboratable):
         m.d.ph1 += self.sr_flags.eq(self._sr_flags)
 
         # intermediates
-        carry4 = Signal()
-        carry7 = Signal()
-        carry8 = Signal()
+        half_carry = Signal()
+        carry_out = Signal()
         overflow = Signal()
 
         with m.Switch(self.func):
@@ -91,36 +90,87 @@ class ALU8(Elaboratable):
 
             with m.Case(ALU8Func.ADC):
                 carry_in = self.sr_flags[Flags.C]
+                decimal = self.sr_flags[Flags.D]
 
-                sum0_3 = Cat(self.output[:4], carry4)
-                m.d.comb += sum0_3.eq(self.input1[:4] +
-                                      self.input2[:4] + carry_in)
-                sum4_6 = Cat(self.output[4:7], carry7)
-                m.d.comb += sum4_6.eq(self.input1[4:7] +
-                                      self.input2[4:7] + carry4)
-                sum7 = Cat(self.output[7], carry8)
-                m.d.comb += sum7.eq(self.input1[7] + self.input2[7] + carry7)
-                m.d.comb += overflow.eq(carry7 ^ carry8)
-                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
-                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                dec_hc = Signal() # decimal half carry
+                dec_co = Signal() # decimal carry out
+
+                res_hi = Signal(5)
+                res_lo = Signal(5)
+
+                result = Cat(res_lo[:4], res_hi)
+
+                adj_hi = Signal(4)
+                adj_lo = Signal(4)
+
+                m.d.comb += dec_hc.eq(decimal & (res_lo[1:4] >= 5))
+                m.d.comb += dec_co.eq(decimal & (res_hi[1:4] >= 5))
+
+                # combined binary or decimal half carry
+                m.d.comb += half_carry.eq(res_lo[4] | dec_hc)
+
+                m.d.comb += res_lo.eq(self.input1[:4] + self.input2[:4] + carry_in)
+                m.d.comb += res_hi.eq(self.input1[4:8] + self.input2[4:8] + half_carry)
+
+                # combined binary or decimal carry out
+                m.d.comb += carry_out.eq(result[8] | dec_co)
+
+                m.d.comb += overflow.eq(self.input1[7] ^ self.input2[7] ^ carry_out ^ result[7])
+
+                m.d.comb += self._sr_flags[Flags.N].eq(result[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(result[:8] == 0)
                 m.d.comb += self._sr_flags[Flags.V].eq(overflow)
-                m.d.comb += self._sr_flags[Flags.C].eq(carry8)
+                m.d.comb += self._sr_flags[Flags.C].eq(carry_out)
+
+                m.d.comb += adj_lo.eq(Mux(decimal & half_carry, 6, 0))
+                m.d.comb += adj_hi.eq(Mux(decimal & carry_out, 6, 0))
+
+                m.d.comb += self.output[:4].eq(result[:4] + adj_lo)
+                m.d.comb += self.output[4:8].eq(result[4:8] + adj_hi)
 
             with m.Case(ALU8Func.SBC):
                 carry_in = self.sr_flags[Flags.C]
+                decimal = self.sr_flags[Flags.D]
 
-                sum0_6 = Cat(self.output[:7], carry7)
-                m.d.comb += sum0_6.eq(self.input1[:7] +
-                                      ~self.input2[:7] + ~carry_in)
-                sum7 = Cat(self.output[7], carry8)
-                m.d.comb += sum7.eq(self.input1[7] + ~self.input2[7] + carry7)
-                m.d.comb += overflow.eq(carry7 ^ carry8)
-                m.d.comb += self._sr_flags[Flags.N].eq(self.output[7])
-                m.d.comb += self._sr_flags[Flags.Z].eq(self.output == 0)
+                dec_hc = Signal() # decimal half carry
+                dec_co = Signal() # decimal carry out
+
+                res_hi = Signal(5)
+                res_lo = Signal(5)
+
+                result = Cat(res_lo[:4], res_hi)
+
+                adj_hi = Signal(4)
+                adj_lo = Signal(4)
+
+                m.d.comb += dec_hc.eq(decimal & (res_lo[1:4] >= 5))
+                m.d.comb += dec_co.eq(decimal & (res_hi[1:4] >= 5))
+
+                # combined binary or decimal half carry
+                m.d.comb += half_carry.eq(res_lo[4] | dec_hc)
+
+                m.d.comb += res_lo.eq(self.input1[:4] + ~self.input2[:4] + carry_in)
+                m.d.comb += res_hi.eq(self.input1[4:8] + ~self.input2[4:8] + half_carry)
+
+                # combined binary or decimal carry out
+                m.d.comb += carry_out.eq(result[8] | dec_co)
+
+                m.d.comb += overflow.eq(self.input1[7] ^ ~self.input2[7] ^ carry_out ^ result[7])
+
+                m.d.comb += self._sr_flags[Flags.N].eq(result[7])
+                m.d.comb += self._sr_flags[Flags.Z].eq(result[:8] == 0)
                 m.d.comb += self._sr_flags[Flags.V].eq(overflow)
-                m.d.comb += self._sr_flags[Flags.C].eq(~carry8)
+                m.d.comb += self._sr_flags[Flags.C].eq(carry_out)
+
+                m.d.comb += adj_lo.eq(Mux(decimal & ~half_carry, 10, 0))
+                m.d.comb += adj_hi.eq(Mux(decimal & ~carry_out, 10, 0))
+
+                m.d.comb += self.output[:4].eq(result[:4] + adj_lo)
+                m.d.comb += self.output[4:8].eq(result[4:8] + adj_hi)
 
             with m.Case(ALU8Func.SUB):
+                carry7 = Signal()
+                carry8 = Signal()
                 sum0_6 = Cat(self.output[:7], carry7)
                 m.d.comb += sum0_6.eq(self.input1[:7] + ~self.input2[:7] + 1)
                 sum7 = Cat(self.output[7], carry8)
